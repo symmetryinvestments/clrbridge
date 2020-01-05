@@ -1,0 +1,4 @@
+dotnetCompiler?=csc
+@rm out/ClrLibRunner.exe
+@mkdir out
+${dotnetCompiler} /out:out/ClrLibRunner.exe clrlibrunner/ClrLibRunner.cs
