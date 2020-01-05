@@ -1,0 +1,7 @@
+dotnetCompiler?=csc
+
+@rm out/ClrBridge.gen.cs out/ClrBridge.dll
+@mkdir out
+
+rund -g -debug -I=dlang/src_clr dotnetlib/generateClrBridge.d > out/ClrBridge.gen.cs
+${dotnetCompiler} /out:out/ClrBridge.dll /t:library dotnetlib/ClrBridge.cs out/ClrBridge.gen.cs

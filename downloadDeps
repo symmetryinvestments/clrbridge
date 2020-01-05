@@ -1,0 +1,9 @@
+release=v3.0.0-beta.2
+tmp=out/DerelictUtil.cloning
+@rm ${tmp}
+@mkdir ${tmp}
+git -C ${tmp} init
+git -C ${tmp} remote add origin https://github.com/DerelictOrg/DerelictUtil
+git -C ${tmp} fetch origin ${release}
+git -C ${tmp} reset --hard FETCH_HEAD
+@mv ${tmp} out/DerelictUtil

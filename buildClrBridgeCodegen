@@ -1,0 +1,5 @@
+dotnetCompiler?=csc
+
+@rm out/ClrBridgeCodegen.exe
+@mkdir out
+${dotnetCompiler} /out:out/ClrBridgeCodegen.exe codegen/ClrBridgeCodegen.cs
