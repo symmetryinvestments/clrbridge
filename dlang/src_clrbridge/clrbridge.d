@@ -97,13 +97,13 @@ struct ClrBridgeError
     enum Type
     {
         none,
-        createDelegate,
+        createClrBridgeDelegate,
         forward,
     }
     private static struct TypeStructs
     {
         static struct none { }
-        static struct createDelegate { string assembly; string type; const(char)[] func; HRESULT result; }
+        static struct createClrBridgeDelegate { string methodName; HRESULT result; }
         static struct forward { ubyte code; }
     }
 
@@ -111,7 +111,7 @@ struct ClrBridgeError
     union Data
     {
         TypeStructs.none none;
-        TypeStructs.createDelegate createDelegate;
+        TypeStructs.createClrBridgeDelegate createClrBridgeDelegate;
         TypeStructs.forward forward;
     }
     Data data;
@@ -129,9 +129,9 @@ struct ClrBridgeError
         final switch (type)
         {
            case Type.none: sink("NoError"); break;
-           case Type.createDelegate:
-               formattedWrite(sink, "create_delegate(assembly=%s, type=%s, func=%s) failed with error %s",
-                   data.createDelegate.assembly, data.createDelegate.type, data.createDelegate.func, data.createDelegate.result);
+           case Type.createClrBridgeDelegate:
+               formattedWrite(sink, "create_delegate(methodName=%s) failed with error %s",
+                   data.createClrBridgeDelegate.methodName, data.createClrBridgeDelegate.result);
                break;
            case Type.forward:
                errorFormatter(data.forward.code).toString(sink);
@@ -140,20 +140,32 @@ struct ClrBridgeError
     }
 }
 
-private ClrBridgeError loadFunc(T)(CoreclrHost* host, CString name, T* func)
-{
-    const errorCode = host.create_delegate(CStringLiteral!"ClrBridge", CStringLiteral!"ClrBridge", name, cast(void**)func);
-    if (errorCode.failed)
-        return ClrBridgeError.createDelegate("ClrBridge", "ClrBridge", name.asSlice, errorCode);
-    return ClrBridgeError.none;
-}
+
 ClrBridgeError loadClrBridge(CoreclrHost* coreclrHost, ClrBridge* bridge)
+{
+     static struct CoreclrDelegateFactory
+     {
+         CoreclrHost* coreclrHost;
+         HRESULT createClrBridgeDelegate(CString methodName, void** outFuncAddr) const
+         {
+             return coreclrHost.create_delegate(CStringLiteral!"ClrBridge",
+                 CStringLiteral!"ClrBridge", methodName, outFuncAddr);
+         }
+     }
+     const factory = CoreclrDelegateFactory(coreclrHost);
+     return loadClrBridge(&factory.createClrBridgeDelegate, bridge);
+}
+
+alias CreateClrBridgeDelegate = HRESULT delegate(CString methodName, void** outFuncAddr);
+
+ClrBridgeError loadClrBridge(CreateClrBridgeDelegate createClrBridgeDelegate, ClrBridge* bridge)
 {
     static foreach(method; __traits(allMembers, ClrBridge.Funcs))
     {
         {
-            const error = loadFunc(coreclrHost, CStringLiteral!method, &__traits(getMember, bridge.funcs, method));
-            if (error.failed) return error;
+            const error = createClrBridgeDelegate(CStringLiteral!method, cast(void**)&__traits(getMember, bridge.funcs, method));
+            if (error.failed)
+                return ClrBridgeError.createClrBridgeDelegate(method, error);
         }
     }
     {

@@ -42,7 +42,7 @@ struct FuncDefs
     alias coreclr_shutdown_2 = extern(C) int function(void* hostHandle, uint domainId, int* latchedExitCode) nothrow @nogc;
 
     alias coreclr_create_delegate = extern(C) HRESULT function(
-        void* hostHandle,
+        const void* hostHandle,
         uint domainId,
         CString entryPointAssemblyName,
         CString entryPointTypeName,
@@ -81,7 +81,7 @@ private struct NotLoaded
     { notLoaded(); assert(0); }
 
     static extern(C) HRESULT coreclr_create_delegate(
-        void* hostHandle,
+        const void* hostHandle,
         uint domainId,
         CString entryPointAssemblyName,
         CString entryPointTypeName,

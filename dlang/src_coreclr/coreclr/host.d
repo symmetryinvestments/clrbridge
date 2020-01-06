@@ -166,12 +166,12 @@ struct CoreclrHost
         return ret;
     }
 
-    HRESULT create_delegate(CString assembly, CString type, CString method, void** dg)
+    HRESULT create_delegate(CString assembly, CString type, CString method, void** dg) const
     {
         return coreclr_create_delegate(handle, domainId, assembly, type, method, dg);
     }
 
-    void* create_delegate(string assembly, string type, string method)
+    void* create_delegate(string assembly, string type, string method) const
     {
         import std.format : format;
 
