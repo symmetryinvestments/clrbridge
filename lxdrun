@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echorun() {
+    echo "$@"
+    "$@"
+}
+
+repo_path=$(realpath $(dirname ${BASH_SOURCE[0]}))
+base_image="ubuntu:18.04"
+#container_name=$(echo $repo_path | sed s:/:_:g)
+container_name=clrbridge
+
+cmd_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --container-name)
+        container_name="$2"; shift; shift;;
+    --base-image)
+        base_image="$2"; shift; shift;;
+    *)
+        cmd_args+=("$1"); shift;;
+esac; done
+
+echo container_name is $container_name
+echo base_image is $base_image
+
+if lxc info $container_name 2> /dev/null; then
+    echo "container $container_name is already created"
+else
+    echorun lxc launch "$base_image" $container_name
+fi
+
+
+# TODO: don't know how to keep arguments with spaces together without doing this
+#args=
+#for elem in "${cmd_args[@]}"; do
+#    args="$args \"$elem\""
+#done
+
+# push takes too long!
+#echorun lxc file push -r $repo_path $container_name/root
+
+if lxc config device get $container_name clrbridgerepo path 2> /dev/null; then
+    echo "clrbridgerepo device already added"
+else
+    echorun lxc config device add $container_name clrbridgerepo disk path=/root source=$repo_path
+fi
+
+#lxc exec $container_name -- bash -c "$args"
+echorun exec lxc exec $container_name ${cmd_args[@]}
+exit 0
+
+### Directory we're using in the container for all our building
+CROOT=/root
+### Dir we store files we're going to add to the container
+CFILES=container_files
+
+
+#KNOWN_HOSTS=$CFILES/known_hosts
+#MY_LXC_KEY=$HOME/.ssh/id_ed25519_locallxc
+#MY_LXC_PUBKEY=$HOME/.ssh/id_ed25519_locallxc.pub
+
+set -x
+
+exit 0
+
+lxc stop clrbridge-build || true
+lxc delete clrbridge-build || true
+
+
+#lxc file push -p ${KNOWN_HOSTS}   ${CONTAINER_NAME}/root/.ssh/
+#lxc file push -p ${MY_LXC_PUBKEY} ${CONTAINER_NAME}/root/.ssh/id_ed25519.pub
+#lxc file push -p ${MY_LXC_KEY}    ${CONTAINER_NAME}/root/.ssh/id_ed25519
+
+#lxc file push -p ${CFILES}/install_dpp.sh           ${CONTAINER_NAME}${CROOT}/
+#lxc file push -p ${CFILES}/clone_and_build_xenon.sh ${CONTAINER_NAME}${CROOT}/
+#lxc file push -p ${CFILES}/clone_and_build_root.sh  ${CONTAINER_NAME}${CROOT}/
+#lxc file push -p ${CFILES}/clone_and_build_sil.sh   ${CONTAINER_NAME}${CROOT}/
+
+#lxc exec ${CONTAINER_NAME} -- sleep 2  # I think lets DNS settle
+#lxc exec ${CONTAINER_NAME} -- ${CROOT}/install_dpp.sh
+#lxc exec ${CONTAINER_NAME} -- ${CROOT}/clone_and_build_xenon.sh
+#lxc exec ${CONTAINER_NAME} -- ${CROOT}/clone_and_build_root.sh
+#lxc exec ${CONTAINER_NAME} -- ${CROOT}/clone_and_build_sil.sh
+#
+#container-delete:
+#	lxc delete ${CONTAINER_NAME) --force
+#
+#container-rebuild: container-delete  \
+#                   container-build
+#
+#container-login:
+#	lxc exec ${CONTAINER_NAME) -- /bin/bash
+#
+#
+###  ----------------------------------------------------------------------
+###  Building our plugin code in the container
+###    TODO work out how to get make to build+start the container when not there
+#
+#### Send all necessary code over to the container (changed or not)
+#container-send-code:
+#	lxc exec $(CONTAINER_NAME) -- rm -rf $(CROOT)/silcling/
+#	lxc exec $(CONTAINER_NAME) -- rm -f  $(CROOT)/Makefile
+#	lxc file push -pr ./silcling/        $(CONTAINER_NAME)$(CROOT)/
+#	lxc file push -p  $(CFILES)/Makefile $(CONTAINER_NAME)$(CROOT)/Makefile
+#
+#build: container-send-code
+#	lxc exec $(CONTAINER_NAME) -- /bin/bash -c "cd $(CROOT) && make build"
+#
+#run:   container-send-code
+#	lxc exec $(CONTAINER_NAME) -- /bin/bash -c "cd $(CROOT) && make run"
+#
+#test:  container-send-code
+#	lxc exec $(CONTAINER_NAME) -- /bin/bash -c "cd $(CROOT) && make test"
+#
