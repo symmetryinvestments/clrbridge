@@ -1,13 +1,13 @@
 import std.string : toStringz;
 
 import std.stdio;
+import hresult;
 import cstring;
 
-
-extern(C) uint function(CString assemblyName, CString typeName, CString methodName, void** outFuncAddr) nothrow @nogc CreateDelegate;
+alias CreateDelegate = extern(C) HRESULT function(CString assemblyName, CString typeName, CString methodName, void** outFuncAddr) nothrow @nogc;
 
 // TODO: move this function to the clrbridge library
-extern(C) int mainClr(/*CreateDelegate createDelegate, */int argc/*, CString* argv, CString envp*/)
+extern(C) int mainClr(CreateDelegate createDelegate, int argc/*, CString* argv, CString envp*/)
 {
     import core.stdc.stdio : printf;
     printf("mainClr!\n");
@@ -15,7 +15,7 @@ extern(C) int mainClr(/*CreateDelegate createDelegate, */int argc/*, CString* ar
     try
     {
         Runtime.initialize();
-        const result = mainClr2(argc/*, argv*/);
+        const result = mainClr2(createDelegate, argc/*, argv*/);
         Runtime.terminate();
         return result;
     }
@@ -25,8 +25,32 @@ extern(C) int mainClr(/*CreateDelegate createDelegate, */int argc/*, CString* ar
         return 1;
     }        
 }
-int mainClr2(int argc/*, CString* argv*/)
+int mainClr2(CreateDelegate createDelegate, int argc/*, CString* argv*/)
 {
     printf("mainClr2 argc=%d!\n", argc);
+
+    {
+        void function(void*) debugWriteObject;
+        // for some reason this causes dlopen to fail???
+        //const result = createDelegate(CStringLiteral!"ClrBridge", CStringLiteral!"ClrBridge",
+        //    CStringLiteral!"DebugWriteObject", cast(void**)&debugWriteObject);
+        //writefln("result = %s", result);
+    }
+
+     static struct CreateDelegateFactory
+     {
+         /*
+         HRESULT createClrBridgeDelegate(CString methodName, void** outFuncAddr) const
+         {
+             return coreclrHost.create_delegate(CStringLiteral!"ClrBridge",
+                 CStringLiteral!"ClrBridge", methodName, outFuncAddr);
+         }
+         */
+     }
+
+    {
+
+    }
+
     return 0;
 }

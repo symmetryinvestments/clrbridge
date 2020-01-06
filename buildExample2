@@ -1,1 +1,0 @@
-dmd -shared -fPIC -of=out/example2 -I=dlang/src_cstring example2.d

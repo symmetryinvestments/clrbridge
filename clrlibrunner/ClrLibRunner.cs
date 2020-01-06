@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 class ClrLibRunner
 {
     const String EntryName = "mainClr";
-    delegate Int32 EntryDelegate(Int32 argc/*, Char** argv*/);
+    delegate Int32 EntryDelegate(IntPtr createDelegateFuncPtr, Int32 argc/*, Char** argv*/);
 
     // TODO: format these as correct HRESULTs
     const UInt32 ErrorRequestedNonStaticMethod = 0x80000001;
@@ -30,7 +30,7 @@ class ClrLibRunner
             IntPtr moduleHandle = LinuxNativeMethods.dlopen(sharedLibrary, RTLD_NOW);
             if (moduleHandle == IntPtr.Zero)
             {
-                Console.WriteLine("Error: dlopen '{0}' failed (TODO: get error code/message)", sharedLibrary);
+                Console.WriteLine("Error: dlopen '{0}' failed, errno={1}", sharedLibrary, Marshal.GetLastWin32Error());
                 return 1;
             }
             IntPtr funcPtr = LinuxNativeMethods.dlsym(moduleHandle, EntryName);
@@ -46,12 +46,17 @@ class ClrLibRunner
             Console.WriteLine("Error: unsupported platform");
             return 1;
         }
-        return entry(args.Length/*, args*/);
+        IntPtr createDelegateFuncPtr = Marshal.GetFunctionPointerForDelegate(new CreateDelegateDelegate(CreateDelegate));
+        return entry(createDelegateFuncPtr, args.Length/*, args*/);
     }
+
+    delegate uint CreateDelegateDelegate(String assemblyName, String typeName, String methodName, ref IntPtr outFuncAddr);
 
     // Returns: HRESULT on error
     static uint CreateDelegate(String assemblyName, String typeName, String methodName, ref IntPtr outFuncAddr)
     {
+        Console.WriteLine("[DEBUG] CreateDelegate called");
+        Console.WriteLine("[DEBUG] assemblyName={0} typeName={1} methodName={2}", assemblyName, typeName, methodName);
         Assembly assembly = Assembly.Load(assemblyName);
         Type type = assembly.GetType(typeName);
         MethodInfo method = type.GetMethod(methodName);
@@ -80,13 +85,13 @@ static class LinuxNativeMethods
 TODO: support for windows
 static class WindowsNativeMethods
 {
-     [DllImport("kernel32.dll")]
+     [DllImport("kernel32.dll", SetLastError = true)]
      public static extern IntPtr LoadLibrary(String dllToLoad);
 
-     [DllImport("kernel32.dll")]
+     [DllImport("kernel32.dll", SetLastError = true)]
      public static extern IntPtr GetProcAddress(IntPtr hModule, String procedureName);
 
-     [DllImport("kernel32.dll")]
+     [DllImport("kernel32.dll", SetLastError = true)]
      public static extern bool FreeLibrary(IntPtr hModule);
 }
 The unmanaged library should be loaded by calling LoadLibrary:
