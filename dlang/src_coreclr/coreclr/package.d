@@ -106,6 +106,21 @@ __gshared FuncDefs.coreclr_create_delegate  coreclr_create_delegate  = &NotLoade
 __gshared FuncDefs.coreclr_execute_assembly coreclr_execute_assembly = &NotLoaded.coreclr_execute_assembly;
 private __gshared string loadCoreclrLibName = null; // used by 'host.d' to find other libraries/assemblies
 
+// try atomic exchange if supported, otherwise, fallback to a normal exchange
+bool tryAtomicExchange(shared bool* value, bool newValue)
+{
+    import core.atomic;
+    static if (is(atomicExchange))
+        return atomicExchange(value, newValue);
+    else
+    {
+        // fallback to non-atomic exchange
+        auto save = *value;
+        *value = newValue;
+        return save;
+    }
+}
+
 /**
 Load the coreclr library functions (i.e. coreclr_initialize, coreclr_shutdown, etc).
 Params:
@@ -113,11 +128,11 @@ Params:
 */
 void loadCoreclr(string libNames = defaultLibNames)
 {
-    import core.atomic : atomicExchange;
     import derelict.util.loader;
 
     static shared calledAlready = false;
-    if (atomicExchange(&calledAlready, true))
+
+    if (tryAtomicExchange(&calledAlready, true))
         throw new Exception("loadCoreclr was called more than once");
 
     static class CoreclrLoader : SharedLibLoader
