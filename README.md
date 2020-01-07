@@ -118,4 +118,7 @@ rund minish.d buildClrCallbackHost
 
 # run exmaple2 that uses ClrCallbackHost.exe
 rund minish.d runCallbackHostExample
+
+# run tests
+rund minish.d runTests
 ```

@@ -7,3 +7,4 @@ rund minish.d generateDWrappers
 rund example.d
 rund minish.d buildClrCallbackHost
 rund minish.d runCallbackHostExample
+rund minish.d runTests
