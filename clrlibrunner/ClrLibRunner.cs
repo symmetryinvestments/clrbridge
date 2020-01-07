@@ -22,8 +22,8 @@ static class HResultError
 
 class ClrLibRunner
 {
-    const String EntryName = "mainClr";
-    delegate Int32 EntryDelegate(IntPtr createDelegateFuncPtr, Int32 argc/*, Char** argv*/);
+    const String EntryName = "_mainClr";
+    delegate Int32 EntryDelegate(IntPtr createDelegateFuncPtr, Int32 argc, String[] argv);
 
     public static Int32 Main(String[] args)
     {
@@ -61,7 +61,7 @@ class ClrLibRunner
             return 1;
         }
         IntPtr createDelegateFuncPtr = Marshal.GetFunctionPointerForDelegate(new CreateDelegateDelegate(CreateDelegate));
-        return entry(createDelegateFuncPtr, args.Length - 1/*, args*/);
+        return entry(createDelegateFuncPtr, args.Length, args);
     }
 
     delegate uint CreateDelegateDelegate(String assemblyName, String methodName, ref IntPtr outFuncAddr);
