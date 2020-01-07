@@ -4,7 +4,12 @@ import std.stdio;
 import hresult;
 import cstring;
 
-alias CreateDelegate = extern(C) HRESULT function(CString assemblyName, CString typeName, CString methodName, void** outFuncAddr) nothrow @nogc;
+// uncommenting causes dlopen to fail
+import clrbridge;
+import clrbridgeglobal;
+
+// TODO: should return HRESULT but is causing dlopen to fail???
+alias CreateDelegate = extern(C) HRESULT function(CString assemblyName, CString methodName, void** outFuncAddr) nothrow @nogc;
 
 // TODO: move this function to the clrbridge library
 extern(C) int mainClr(CreateDelegate createDelegate, int argc/*, CString* argv, CString envp*/)
@@ -23,34 +28,27 @@ extern(C) int mainClr(CreateDelegate createDelegate, int argc/*, CString* argv, 
     {
         printf("%s", e.toString().toStringz());
         return 1;
-    }        
+    }
+
+    return 0;
 }
+
 int mainClr2(CreateDelegate createDelegate, int argc/*, CString* argv*/)
 {
     printf("mainClr2 argc=%d!\n", argc);
-
+    static struct CreateDelegateFactory
     {
-        void function(void*) debugWriteObject;
-        // for some reason this causes dlopen to fail???
-        //const result = createDelegate(CStringLiteral!"ClrBridge", CStringLiteral!"ClrBridge",
-        //    CStringLiteral!"DebugWriteObject", cast(void**)&debugWriteObject);
-        //writefln("result = %s", result);
+        CreateDelegate createDelegate;
+        HRESULT createClrBridgeDelegate(CString methodName, void** outFuncAddr) const
+        {
+            return cast(HRESULT)createDelegate(CStringLiteral!"ClrBridge", methodName, outFuncAddr);
+        }
     }
-
-     static struct CreateDelegateFactory
-     {
-         /*
-         HRESULT createClrBridgeDelegate(CString methodName, void** outFuncAddr) const
-         {
-             return coreclrHost.create_delegate(CStringLiteral!"ClrBridge",
-                 CStringLiteral!"ClrBridge", methodName, outFuncAddr);
-         }
-         */
-     }
-
+    const factory = CreateDelegateFactory(createDelegate);
     {
-
+        const result = loadClrBridge(&factory.createClrBridgeDelegate, &globalClrBridge);
+        if (result.failed)
+            writefln("Error: loadClrBridge failed with %s", result);
     }
-
     return 0;
 }

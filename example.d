@@ -13,12 +13,13 @@ import std.stdio;
 
 import cstring;
 import clrbridge;
+import clrbridgecoreclr;
 
 import mscorlib.System;
 
 int main(string[] args)
 {
-    initGlobalClrBridge(buildPath(__FILE_FULL_PATH__.dirName, "out", "ClrBridge.dll"));
+    initGlobalClrBridgeWithCoreclr(buildPath(__FILE_FULL_PATH__.dirName, "out", "ClrBridge.dll"));
 
     foreach (i; 0 .. 4)
         Console.WriteLine();

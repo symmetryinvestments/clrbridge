@@ -32,6 +32,12 @@ rund minish.d generateDWrappers
 
 # execute the example that uses the code from generateDWrappers
 rund example.d
+
+# build the ClrLibRunner tool
+rund minish.d buildClrLibRunner
+
+# run exmaple2 that uses ClrLibRunner
+rund minish.d runExample2
 ```
 
 # TODO

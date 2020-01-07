@@ -1,4 +1,7 @@
 dotnetCompiler?=csc
+dotnetLoader?=mono
 @rm out/ClrLibRunner.exe
 @mkdir out
-${dotnetCompiler} /out:out/ClrLibRunner.exe clrlibrunner/ClrLibRunner.cs
+${dotnetCompiler} /out:out/GenerateDelegateTypes.exe clrlibrunner/GenerateDelegateTypes.cs
+${dotnetLoader} out/GenerateDelegateTypes.exe > out/ClrBridgeDelegateTypes.gen.cs
+${dotnetCompiler} /out:out/ClrLibRunner.exe clrlibrunner/ClrLibRunner.cs out/ClrBridgeDelegateTypes.gen.cs

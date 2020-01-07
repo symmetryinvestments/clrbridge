@@ -3,45 +3,10 @@ import std.traits : Parameters;
 import cstring : CString, CStringLiteral;
 import hresult;
 
-import coreclr.host;
-
 import core.stdc.stdlib : malloc, free;
 
 static import clr;
 import clr : DotNetObject, Decimal;
-
-/// Convenience function to completely initialize the ClrBridge
-void initGlobalClrBridge(string clrBridgeDll)
-{
-    import std.format : format;
-    import std.path : pathSeparator;
-    import std.file : exists;
-    import coreclr : loadCoreclr;
-    import coreclr.globalhost;
-    import clrbridgeglobal;
-
-    // Add this check because it gives a nice error message for something that is probably
-    // going to happen farily commonly
-    if (!exists(clrBridgeDll))
-        throw new Exception(format("initClrBridge failed: clrBridgeDll '%s' does not exist", clrBridgeDll));
-
-    loadCoreclr();
-    {
-        CoreclrHostOptions options;
-        auto propMap = coreclrDefaultProperties();
-        propMap[StandardCoreclrProp.TRUSTED_PLATFORM_ASSEMBLIES] = format("%s%s%s",
-            propMap[StandardCoreclrProp.TRUSTED_PLATFORM_ASSEMBLIES],
-            pathSeparator,
-            clrBridgeDll);
-        options.properties = CoreclrProperties(propMap);
-        globalCoreclrHost.initialize(options);
-    }
-    {
-        const result = loadClrBridge(&globalCoreclrHost, &globalClrBridge);
-        if (result.failed)
-            throw new Exception(format("initClrBridge failed: loadClrBridge failed with %s", result));
-    }
-}
 
 mixin template DotnetPrimitiveWrappers(string funcName)
 {
@@ -78,11 +43,11 @@ enum ClrBridgeErrorCode : ubyte
     ambiguousMethod = 4,
 }
 
-auto errorFormatter(ubyte errorCode)
+auto errorFormatter(uint errorCode)
 {
     static struct Formatter
     {
-        ubyte errorCode;
+        uint errorCode;
         void toString(scope void delegate(const(char)[]) sink) const
         {
             import std.format : formattedWrite;
@@ -104,7 +69,7 @@ struct ClrBridgeError
     {
         static struct none { }
         static struct createClrBridgeDelegate { string methodName; HRESULT result; }
-        static struct forward { ubyte code; }
+        static struct forward { uint code; }
     }
 
     Type type;
@@ -140,21 +105,6 @@ struct ClrBridgeError
     }
 }
 
-
-ClrBridgeError loadClrBridge(CoreclrHost* coreclrHost, ClrBridge* bridge)
-{
-     static struct CoreclrDelegateFactory
-     {
-         CoreclrHost* coreclrHost;
-         HRESULT createClrBridgeDelegate(CString methodName, void** outFuncAddr) const
-         {
-             return coreclrHost.create_delegate(CStringLiteral!"ClrBridge",
-                 CStringLiteral!"ClrBridge", methodName, outFuncAddr);
-         }
-     }
-     const factory = CoreclrDelegateFactory(coreclrHost);
-     return loadClrBridge(&factory.createClrBridgeDelegate, bridge);
-}
 
 alias CreateClrBridgeDelegate = HRESULT delegate(CString methodName, void** outFuncAddr);
 
@@ -192,7 +142,7 @@ struct ClrBridge
         //extern(C) void function(size_t a, ...) nothrow @nogc TestVarargs;
         extern(C) void function(const DotNetObject obj) nothrow @nogc DebugWriteObject;
         extern(C) void function(const DotNetObject obj) nothrow @nogc Release;
-        extern(C) size_t function(CString name) nothrow @nogc LoadAssembly;
+        extern(C) uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
         extern(C) size_t function(const Assembly assembly, CString name) nothrow @nogc GetType;
         extern(C) size_t function(const Type type, CString name, const ArrayGeneric paramTypes) nothrow @nogc GetMethod;
         extern(C) size_t function(const MethodInfo method, const DotNetObject obj, const Array!(clr.PrimitiveType.Object) paramTypes) nothrow @nogc CallGeneric;
@@ -250,12 +200,11 @@ struct ClrBridge
         return obj;
     }
 
-    ClrBridgeError tryLoadAssembly(CString name, Assembly* outAssembly) nothrow @nogc
+    ClrBridgeError tryLoadAssembly(CString name, Assembly* outAssembly) //nothrow @nogc
     {
-        const result = funcs.LoadAssembly(name);
-        if (result <= 0xFF)
-            return ClrBridgeError.forward(cast(ubyte)result);
-        *outAssembly = Assembly(DotNetObject(cast(void*)result));
+        const errorCode = funcs.LoadAssembly(name, outAssembly);
+        if (errorCode != 0)
+            return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
     Assembly loadAssembly(CString name)

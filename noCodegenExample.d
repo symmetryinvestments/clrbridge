@@ -15,12 +15,13 @@ import coreclr;
 import coreclr.host;
 import clrbridge;
 import clrbridgeglobal;
+import clrbridgecoreclr;
 
 static import clr;
 
 int main()
 {
-    initGlobalClrBridge(buildPath(__FILE_FULL_PATH__.dirName, "out", "ClrBridge.dll"));
+    initGlobalClrBridgeWithCoreclr(buildPath(__FILE_FULL_PATH__.dirName, "out", "ClrBridge.dll"));
 
     // test failure
     {

@@ -7,7 +7,7 @@ struct HRESULT
     bool passed() const { return value == 0; }
     bool failed() const { return value != 0; }
     uint rawValue() const { return value; }
-    void toString(Sink)(Sink sink) const
+    void toString(scope void delegate(const(char)[]) sink) const
     {
         import std.format: formattedWrite;
         formattedWrite(sink, "0x%x", value);

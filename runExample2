@@ -1,3 +1,3 @@
 dotnetLoader?=mono
-dmd -shared -fPIC -of=out/example2 -I=dlang/src_hresult -I=dlang/src_cstring example2.d
+dmd -shared -fPIC -of=out/example2 -I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_clr -I=dlang/src_clrbridge -i example2.d
 ${dotnetLoader} out/ClrLibRunner.exe out/example2

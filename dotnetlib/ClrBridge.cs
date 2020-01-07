@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 
 public static partial class ClrBridge
 {
+    const UInt32 Success = 0;
     const Byte ErrorFileNotFound = 1;
     const Byte ErrorTypeNotFound = 2;
     const Byte ErrorMethodNotFound = 3;
@@ -26,7 +27,7 @@ public static partial class ClrBridge
     }
     */
 
-    static void DebugWriteObject(IntPtr objPtr)
+    public static void DebugWriteObject(IntPtr objPtr)
     {
         object obj = GCHandle.FromIntPtr(objPtr).Target;
         {
@@ -46,22 +47,23 @@ public static partial class ClrBridge
 
     // Most objects created by this class use GC.Alloc to pin them.
     // Call this to unpin them.
-    static void Release(IntPtr ptr)
+    public static void Release(IntPtr ptr)
     {
         GCHandle.FromIntPtr(ptr).Free();
     }
 
-    static IntPtr LoadAssembly(string name)
+    public static UInt32 LoadAssembly(string name, ref IntPtr handle)
     {
         Assembly assembly;
         try { assembly = Assembly.Load(name); }
-        catch (FileNotFoundException) { return new IntPtr(ErrorFileNotFound); }
-        return GCHandle.ToIntPtr(GCHandle.Alloc(assembly));
+        catch (FileNotFoundException) { return ErrorFileNotFound; }
+        handle =  GCHandle.ToIntPtr(GCHandle.Alloc(assembly));
+        return Success;
     }
     // TODO: add LoadAssemblyFile to call Assembly.LoadFile
     //static IntPtr LoadAssemblyFile(string
 
-    static IntPtr GetType(IntPtr assemblyPtr, string typeName)
+    public static IntPtr GetType(IntPtr assemblyPtr, string typeName)
     {
         Assembly assembly = (Assembly)GCHandle.FromIntPtr(assemblyPtr).Target;
         Type type = assembly.GetType(typeName, false);
@@ -70,7 +72,7 @@ public static partial class ClrBridge
         return GCHandle.ToIntPtr(GCHandle.Alloc(type));
     }
 
-    static IntPtr GetMethod(IntPtr typePtr, string methodName, IntPtr paramTypesArrayPtr)
+    public static IntPtr GetMethod(IntPtr typePtr, string methodName, IntPtr paramTypesArrayPtr)
     {
         Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
         Type[] paramTypes = null;
@@ -91,7 +93,7 @@ public static partial class ClrBridge
         return GCHandle.ToIntPtr(GCHandle.Alloc(methodInfo));
     }
 
-    static void CallGeneric(IntPtr methodPtr, IntPtr objPtr, IntPtr argsArrayPtr)
+    public static void CallGeneric(IntPtr methodPtr, IntPtr objPtr, IntPtr argsArrayPtr)
     {
         MethodInfo method = (MethodInfo)GCHandle.FromIntPtr(methodPtr).Target;
         Object obj = null;
@@ -101,25 +103,25 @@ public static partial class ClrBridge
         method.Invoke(obj, args);
     }
 
-    static IntPtr NewObject(IntPtr typePtr)
+    public static IntPtr NewObject(IntPtr typePtr)
     {
         Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
         return GCHandle.ToIntPtr(GCHandle.Alloc(Activator.CreateInstance(type)));
     }
 
-    static IntPtr ArrayBuilderNew(IntPtr typePtr, UInt32 initialSize)
+    public static IntPtr ArrayBuilderNew(IntPtr typePtr, UInt32 initialSize)
     {
         Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
         Type arrayType = typeof(ArrayBuilder<>).MakeGenericType(type);
         return GCHandle.ToIntPtr(GCHandle.Alloc(Activator.CreateInstance(arrayType, initialSize)));
     }
-    static IntPtr ArrayBuilderFinish(IntPtr arrayBuilderPtr)
+    public static IntPtr ArrayBuilderFinish(IntPtr arrayBuilderPtr)
     {
         Object arrayBuilder = GCHandle.FromIntPtr(arrayBuilderPtr).Target;
         return GCHandle.ToIntPtr(GCHandle.Alloc(
             arrayBuilder.GetType().GetMethod("Finish").Invoke(arrayBuilder, null)));
     }
-    static void ArrayBuilderAddGeneric(IntPtr arrayBuilderPtr, IntPtr objPtr)
+    public static void ArrayBuilderAddGeneric(IntPtr arrayBuilderPtr, IntPtr objPtr)
     {
         Object arrayBuilder = GCHandle.FromIntPtr(arrayBuilderPtr).Target;
         Object obj = GCHandle.FromIntPtr(objPtr).Target;
