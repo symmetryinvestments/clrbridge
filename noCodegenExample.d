@@ -51,7 +51,8 @@ int main()
 
         static foreach (i; 0 .. size)
         {{
-            const sb = globalClrBridge.newObject(stringBuilderType);
+            const stringBuilderCtor = globalClrBridge.getConstructor(stringBuilderType, ArrayGeneric.nullObject);
+            const sb = globalClrBridge.callConstructor(stringBuilderCtor, Array!(clr.PrimitiveType.Object).nullObject);
             scope(exit) globalClrBridge.release(sb);
             globalClrBridge.arrayBuilderAddGeneric(arr, sb);
         }}
@@ -100,7 +101,7 @@ int main()
         scope(exit) globalClrBridge.release(msg);
         const args = globalClrBridge.makeObjectArray(msg);
         scope(exit) globalClrBridge.release(args);
-        globalClrBridge.funcs.CallGeneric(consoleWriteLine, clr.DotNetObject.nullObject, args);
+        globalClrBridge.funcs.CallGeneric(consoleWriteLine, clr.DotNetObject.nullObject, args, null);
     }
 
     writeln("success");

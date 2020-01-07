@@ -11,6 +11,7 @@ void runAll()
     static foreach (testName; [
         "basicconsole",
         "stringstuff",
+        "env",
     ])
     {
         writeln("--------------------------------------------------------------------------------");

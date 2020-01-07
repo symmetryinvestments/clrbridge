@@ -91,3 +91,7 @@ rund minish.d cleanBuildAll
 ```
 
 The build is separated into individual steps which you can see in [cleanBuildAll](cleanBuildAll).
+
+# Notes
+
+Currently I use a sequence of calls to create/pass arrays to the CLR.  Instead, I could leverage the technique I use for return values to create an array in one call.  Namely, layout the array elements in memory, then call a function to serialize it into a .NET array.  ClrBridge would iterate over each elements, marshaling each value like it does a return value.  Note that this is just an optimization, I'll have to check performance to see if this extra code is worth it.

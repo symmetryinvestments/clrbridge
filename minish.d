@@ -114,19 +114,23 @@ struct Interpreter
         return 0;
     }
 
+    void enforceArgCount(string cmd, string[] args, size_t expected)
+    {
+        if (args.length != expected)
+            errorExit(format("the '%s' builtin requires %s arguments but got %s", cmd, expected, args.length));
+    }
+
     void runBuiltin(string cmd, string[] args)
     {
         if (false) { }
         else if (cmd == "@set")
         {
-            if (args.length != 2)
-                errorExit(format("@set requires 2 arguments (dest, src), but got %s", args.length));
+            enforceArgCount(cmd, args, 2);
             vars[args[0]] = args[1];
         }
         else if (cmd == "@default")
         {
-            if (args.length != 2)
-                errorExit(format("@default requires 2 arguments (dest, src), but got %s", args.length));
+            enforceArgCount(cmd, args, 2);
             if (args[0] !in vars)
                 vars[args[0]] = args[1];
         }
@@ -152,9 +156,13 @@ struct Interpreter
         }
         else if (cmd == "@mv")
         {
-            if (args.length != 2)
-                errorExit(format("@mv requires 2 arguments (from, to), but got %s", args.length));
+            enforceArgCount(cmd, args, 2);
             rename(args[0], args[1]);
+        }
+        else if (cmd == "@cp")
+        {
+            enforceArgCount(cmd, args, 2);
+            copy(args[0], args[1]);
         }
         else errorExit(format("unknown builtin command '%s'", cmd));
     }

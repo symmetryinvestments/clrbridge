@@ -1,0 +1,14 @@
+@default dotnetCompiler csc
+@default dotnetLoader mono
+
+@rm out/primitives.dll
+@mkdir out/test/unit/primitives
+${dotnetCompiler} /out:out/test/unit/Primitives.dll /t:library test/unit/primitives/Primitives.cs
+${dotnetLoader} out/ClrBridgeCodegen.exe file:out/test/unit/Primitives.dll out/test/unit/src_primitives
+
+# copy ClrBridge.dll so the runtime can find it, note there's probably a better way to do this?
+#@cp out/ClrBridge.dll out/test/unit/ClrBridge.dll
+
+rund -g -debug -I=out/test/unit/src_primitives --pass=test/unit/primitives/test.d test/unit/unittestcoreclr.d out/test/unit/Primitives.dll
+
+# TODO: add callback host test

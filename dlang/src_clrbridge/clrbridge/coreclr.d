@@ -7,8 +7,9 @@ import coreclr.host;
 import clrbridge;
 
 /// Convenience function to completely initialize the ClrBridge
-void initGlobalClrBridgeWithCoreclr(string clrBridgeDll)
+void initGlobalClrBridgeWithCoreclr(string clrBridgeDll, string[] otherDlls = null)
 {
+    import std.array : appender;
     import std.format : format;
     import std.path : pathSeparator;
     import std.file : exists;
@@ -25,10 +26,16 @@ void initGlobalClrBridgeWithCoreclr(string clrBridgeDll)
     {
         CoreclrHostOptions options;
         auto propMap = coreclrDefaultProperties();
-        propMap[StandardCoreclrProp.TRUSTED_PLATFORM_ASSEMBLIES] = format("%s%s%s",
-            propMap[StandardCoreclrProp.TRUSTED_PLATFORM_ASSEMBLIES],
-            pathSeparator,
-            clrBridgeDll);
+        auto dllList = appender!(char[])();
+        dllList.put(propMap[StandardCoreclrProp.TRUSTED_PLATFORM_ASSEMBLIES]);
+        dllList.put(pathSeparator);
+        dllList.put(clrBridgeDll);
+        foreach (otherDll; otherDlls)
+        {
+            dllList.put(pathSeparator);
+            dllList.put(otherDll);
+        }
+        propMap[StandardCoreclrProp.TRUSTED_PLATFORM_ASSEMBLIES] = cast(string)dllList.data;
         options.properties = CoreclrProperties(propMap);
         globalCoreclrHost.initialize(options);
     }

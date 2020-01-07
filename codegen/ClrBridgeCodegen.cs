@@ -29,7 +29,16 @@ static class ClrBridgeCodegen
         Console.WriteLine("assembly : {0}", assemblyString);
         Console.WriteLine("outputDir: {0}", outputDir);
 
-        Assembly assembly = Assembly.Load(assemblyString);
+        Assembly assembly;
+        if (assemblyString.StartsWith("file:"))
+            assembly = Assembly.LoadFile(Path.GetFullPath(assemblyString.Substring(5)));
+        else if (assemblyString.StartsWith("gac:"))
+            assembly = Assembly.Load(assemblyString.Substring(4));
+        else
+        {
+            Console.WriteLine("Error: assembly string must start with 'file:' or 'gac:' but got '{0}'", assemblyString);
+            return 1;
+        }
         new Generator(assembly, outputDir).GenerateModule(assembly);
         return 0;
     }
@@ -198,8 +207,11 @@ class Generator
         {
             module.writer.WriteLine("// DeclaringType = {0}", Util.GetTypeName(type.DeclaringType));
         }
-        module.writer.WriteLine("class {0}", Util.GetTypeName(type));
+        module.writer.WriteLine("// NOTE: not a struct, actually a .NET class!!!");
+        module.writer.WriteLine("struct {0}", Util.GetTypeName(type));
         module.writer.WriteLine("{");
+        module.writer.WriteLine("    // TODO: mixin the base class rather than DotNetObject");
+        module.writer.WriteLine("    mixin __d.clrbridge.DotNetObjectMixin!\"__d.clr.DotNetObject\";");
         GenerateFields(module, type);
         GenerateMethods(module, type);
         module.writer.WriteLine("}");
@@ -212,7 +224,7 @@ class Generator
             Type fieldType = field.FieldType;
             String fromDll = (fieldType.Assembly == thisAssembly) ? "" :
                 GetExtraAssemblyInfo(fieldType.Assembly).fromDllPrefix;
-            module.writer.WriteLine("    {0} {1}; // fromPrefix '{2}' {3} {4}",
+            module.writer.WriteLine("    static /*make static temporarily so we can cast to DotNetObject*/ {0} {1}; // fromPrefix '{2}' {3} {4}",
                 ToDType(fieldType),
                 field.Name.ToDIdentifier(),
                 fromDll,
@@ -224,11 +236,14 @@ class Generator
     {
         foreach (ConstructorInfo constructor in type.GetConstructors())
         {
+            if (type.IsValueType)
+                continue; // script structs for now
             module.writer.Write("    {0} static typeof(this) New", constructor.IsPrivate ? "private" : "public");
-            GenerateParameterList(module, constructor.GetParameters());
+            ParameterInfo[] parameters = constructor.GetParameters();
+            GenerateParameterList(module, parameters);
             module.writer.WriteLine();
             module.writer.WriteLine("    {");
-            module.writer.WriteLine("        return typeof(this).init;");
+            GenerateMethodBody(module, type, constructor, type, parameters);
             module.writer.WriteLine("    }");
         }
         foreach (MethodInfo method in type.GetMethods())
@@ -266,12 +281,7 @@ class Generator
             }
             module.writer.WriteLine();
             module.writer.WriteLine("    {");
-            GenerateMethodBody(module, type, method, parameters);
-            // placeholder for returning a valid value
-            if (method.ReturnType != typeof(void))
-            {
-                module.writer.WriteLine("        return {0}.init;", ToDType(method.ReturnType));
-            }
+            GenerateMethodBody(module, type, method, method.ReturnType, parameters);
             module.writer.WriteLine("    }");
         }
     }
@@ -290,17 +300,22 @@ class Generator
         module.writer.Write(")");
     }
 
-    void GenerateMethodBody(DModule module, Type type, MethodInfo method, ParameterInfo[] parameters)
+    void GenerateMethodBody(DModule module, Type type, MethodBase method, Type returnType, ParameterInfo[] parameters)
     {
         // skip non-static methods for now, they just take too long right now
-        if (!method.IsStatic)
+        if (!method.IsStatic && !method.IsConstructor)
+        {
+            if (returnType != typeof(void))
+                module.writer.WriteLine("        return typeof(return).init;");
             return;
+        }
+        String methodTypeString = method.IsConstructor ? "Constructor" : "Method";
 
         // TODO: we may want to cache some of this stuff, but for now we'll just get it
 
         // Get Assembly so we can get Type then Method (TODO: cache this somehow?)
         Util.GenerateTypeGetter(module.writer, "        ", type, "__this_assembly__", "__this_type__");
-        module.writer.WriteLine("        auto  __method__ = __d.clrbridge.MethodInfo.nullObject;");
+        module.writer.WriteLine("        auto  __method__ = __d.clrbridge.{0}Info.nullObject;", methodTypeString);
         module.writer.WriteLine("        scope (exit) { if (!__method__.isNull) __d.globalClrBridge.release(__method__); }");
 
         //
@@ -319,8 +334,9 @@ class Generator
                     String.Format("__param{0}_type__", paramIndex));
                 paramIndex++;
             }
-            module.writer.WriteLine("            __method__ = __d.globalClrBridge.getMethod(__this_type__,");
-            module.writer.WriteLine("                __d.CStringLiteral!\"{0}\",", method.Name);
+            module.writer.WriteLine("            __method__ = __d.globalClrBridge.get{0}(__this_type__,", methodTypeString);
+            if (!method.IsConstructor)
+                module.writer.WriteLine("                __d.CStringLiteral!\"{0}\",", method.Name);
             module.writer.WriteLine("                __d.globalClrBridge.makeGenericArray(__d.globalClrBridge.typeType");
             for (uint i = 0; i < parameters.Length; i++)
             {
@@ -372,7 +388,27 @@ class Generator
         }
         module.writer.WriteLine("        );");
         module.writer.WriteLine("        scope (exit) { __d.globalClrBridge.release(__param_values__); }");
-        module.writer.WriteLine("        __d.globalClrBridge.funcs.CallGeneric(__method__, __d.clr.DotNetObject.nullObject, __param_values__);");
+
+        String returnValueAddrString;
+        if (returnType == typeof(void))
+            returnValueAddrString = "null";
+        else
+        {
+            module.writer.WriteLine("        typeof(return) __return_value__;");
+            returnValueAddrString = "cast(void**)&__return_value__";
+        }
+
+        if (method.IsConstructor)
+        {
+            module.writer.WriteLine("        __return_value__ = cast(typeof(return))__d.globalClrBridge.callConstructor(__method__, __param_values__);");
+        }
+        else
+        {
+            module.writer.WriteLine("        __d.globalClrBridge.funcs.CallGeneric(__method__, __d.clr.DotNetObject.nullObject, __param_values__, {0});", returnValueAddrString);
+        }
+
+        if (returnType != typeof(void))
+            module.writer.WriteLine("        return __return_value__;");
     }
 
     // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?

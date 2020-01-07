@@ -12,6 +12,11 @@ static class ResultCode
     public const UInt32 ErrorAmbiguousMethod = 4;
 }
 
+static class EmptyArray<T>
+{
+    public static readonly T[] Instance = new T[] { };
+}
+
 public static partial class ClrBridge
 {
     // Most objects created by this class use GC.Alloc to pin them.
@@ -42,6 +47,24 @@ public static partial class ClrBridge
         return ResultCode.Success;
     }
 
+    public static UInt32 GetConstructor(IntPtr typePtr, IntPtr paramTypesArrayPtr, ref IntPtr outConstructor)
+    {
+        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
+        Type[] paramTypes = null;
+        if (paramTypesArrayPtr != IntPtr.Zero)
+            paramTypes = (Type[])GCHandle.FromIntPtr(paramTypesArrayPtr).Target;
+
+        ConstructorInfo constructor;
+        if (paramTypes == null)
+            constructor = type.GetConstructor(EmptyArray<Type>.Instance);
+        else
+            constructor = type.GetConstructor(paramTypes);
+        if (constructor == null)
+            return ResultCode.ErrorMethodNotFound;
+        outConstructor = GCHandle.ToIntPtr(GCHandle.Alloc(constructor));
+        return ResultCode.Success;
+    }
+
     public static UInt32 GetMethod(IntPtr typePtr, string methodName, IntPtr paramTypesArrayPtr, ref IntPtr outMethod)
     {
         Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
@@ -49,43 +72,73 @@ public static partial class ClrBridge
         if (paramTypesArrayPtr != IntPtr.Zero)
             paramTypes = (Type[])GCHandle.FromIntPtr(paramTypesArrayPtr).Target;
 
-        MethodInfo methodInfo;
+        MethodInfo method;
         try
         {
             if (paramTypes == null)
-                methodInfo = type.GetMethod(methodName);
+                method = type.GetMethod(methodName);
             else
-                methodInfo = type.GetMethod(methodName, paramTypes);
+                method = type.GetMethod(methodName, paramTypes);
         }
         catch(AmbiguousMatchException) { return ResultCode.ErrorAmbiguousMethod; }
-        if (methodInfo == null)
+        if (method == null)
             return ResultCode.ErrorMethodNotFound;
-        outMethod = GCHandle.ToIntPtr(GCHandle.Alloc(methodInfo));
+        outMethod = GCHandle.ToIntPtr(GCHandle.Alloc(method));
         return ResultCode.Success;
     }
 
-    // TODO: add IntPtr for return value
-    public static void CallGeneric(IntPtr methodPtr, IntPtr objPtr, IntPtr argsArrayPtr)
+    public static UInt32 CallConstructor(IntPtr constructorPtr, IntPtr argsArrayPtr, ref IntPtr outObjectPtr)
+    {
+        ConstructorInfo ctor = (ConstructorInfo)GCHandle.FromIntPtr(constructorPtr).Target;
+        Object[] args = (argsArrayPtr == IntPtr.Zero) ? EmptyArray<Object>.Instance :
+            (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target;
+        outObjectPtr = GCHandle.ToIntPtr(GCHandle.Alloc(ctor.Invoke(args)));
+        return ResultCode.Success;
+    }
+
+    public static void CallGeneric(IntPtr methodPtr, IntPtr objPtr, IntPtr argsArrayPtr, IntPtr returnValuePtr)
     {
         MethodInfo method = (MethodInfo)GCHandle.FromIntPtr(methodPtr).Target;
         Object obj = null;
         if (objPtr != IntPtr.Zero)
             obj = GCHandle.FromIntPtr(objPtr).Target;
         Object[] args = (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target;
-        method.Invoke(obj, args);
+        MarshalReturnValue(method.ReturnType, method.Invoke(obj, args), returnValuePtr);
     }
 
-    public static UInt32 NewObject(IntPtr typePtr, IntPtr argsArrayPtr, ref IntPtr outObject)
+    private unsafe static void MarshalReturnValue(Type type, Object obj, IntPtr returnValuePtr)
     {
-        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
-        Object obj;
-        if (argsArrayPtr == IntPtr.Zero)
-            obj = Activator.CreateInstance(type);
-        else
-            obj = Activator.CreateInstance(type, (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target);
-
-        outObject = GCHandle.ToIntPtr(GCHandle.Alloc(obj));
-        return ResultCode.Success;
+        if (type == typeof(void)) {
+            // nothing to marshall
+        //} else if (type == typeof(Boolean)) {
+        //    *(Byte*)returnValuePtr = ((Boolean)obj) ? (Byte)1 : (Byte)0;
+        } else if (type == typeof(Byte)) {
+            *(Byte*)returnValuePtr = (Byte)obj;
+        } else if (type == typeof(SByte)) {
+            *(SByte*)returnValuePtr = (SByte)obj;
+        } else if (type == typeof(UInt16)) {
+            *(UInt16*)returnValuePtr = (UInt16)obj;
+        } else if (type == typeof(Int16)) {
+            *(Int16*)returnValuePtr = (Int16)obj;
+        } else if (type == typeof(UInt32)) {
+            *(UInt32*)returnValuePtr = (UInt32)obj;
+        } else if (type == typeof(Int32)) {
+            *(Int32*)returnValuePtr = (Int32)obj;
+        } else if (type == typeof(UInt64)) {
+            *(UInt64*)returnValuePtr = (UInt64)obj;
+        } else if (type == typeof(Int64)) {
+            *(Int64*)returnValuePtr = (Int64)obj;
+        } else if (type == typeof(String)) {
+            *(IntPtr*)returnValuePtr = Marshal.StringToHGlobalAnsi((String)obj);
+        } else if (type == typeof(Single)) {
+            *(Single*)returnValuePtr = (Single)obj;
+        } else if (type == typeof(Double)) {
+            *(Double*)returnValuePtr = (Double)obj;
+        } else if (type == typeof(Decimal)) {
+            *(Decimal*)returnValuePtr = (Decimal)obj;
+        } else {
+            Console.WriteLine("WARNING: cannot marshal return type '{0}' to native yet", type.Name);
+        }
     }
 
     public static UInt32 ArrayBuilderNew(IntPtr typePtr, UInt32 initialSize, ref IntPtr outBuilder)

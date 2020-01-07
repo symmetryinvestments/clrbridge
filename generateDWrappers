@@ -4,9 +4,9 @@
 @set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge"
 
 @mkdir out/src_mscorlib
-${dotnetLoader} out/ClrBridgeCodegen.exe mscorlib out/src_mscorlib
+${dotnetLoader} out/ClrBridgeCodegen.exe gac:mscorlib out/src_mscorlib
 #${dCompiler} -lib -of=out/mscorlib ${includePaths} $(find out/src_mscorlib -name "*.d")
 
 @mkdir out/src_System
-${dotnetLoader} out/ClrBridgeCodegen.exe "System, Version=2.0.3600.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" out/src_System
+${dotnetLoader} out/ClrBridgeCodegen.exe "gac:System, Version=2.0.3600.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" out/src_System
 #${dCompiler} -lib -of=out/System ${includePaths} $(find out/System -name "*.d")
