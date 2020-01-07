@@ -7,13 +7,12 @@
 //!importPath dlang/src_clrbridge
 //!importPath out/src_mscorlib
 
-import std.file : thisExePath, exists;
 import std.path : buildPath, dirName;
 import std.stdio;
 
 import cstring;
 import clrbridge;
-import clrbridgecoreclr;
+import clrbridge.coreclr;
 
 import mscorlib.System;
 

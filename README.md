@@ -4,15 +4,95 @@ Call .NET code from other languages.  Currently focused on the D programming lan
 
 # How it Works
 
-This tool uses the coreclr library to host .NET CLR assemblies from native executables. However, coreclr library alone only provides access to static methods. The ClrBridge.dll .NET assembly supplements the coreclr library by providing static methods that enable full access to the .NET CLR runtime.
+.NET code requires the CLR runtime to execute.  This repo currently supports 2 mechanisms to initialize the CLR runtime in order to run .NET code from native code.
 
-> NOTE: Might add support for other hosting APIs, like the COM CLR Hosting API.
+### Method 1: Coreclr Library Host
+
+This method uses the coreclr library to host .NET CLR assemblies from native executables. The coreclr library initializes a .NET CLR runtime within a native process, and provides functions to call static .NET methods. The `ClrBridge.dll` .NET library provides a set of static methods to enable full access to the .NET CLR runtime.
+
+Here's an example program that uses this method:
+```D
+import std.path;
+import std.stdio;
+
+import cstring;
+import clrbridge;
+import clrbridge.coreclr;
+
+import mscorlib.System;
+
+int main(string[] args)
+{
+    initGlobalClrBridgeWithCoreclr(buildPath(__FILE_FULL_PATH__.dirName, "out", "ClrBridge.dll"));
+
+    foreach (i; 0 .. 4)
+        Console.WriteLine();
+    Console.WriteLine(false);
+    Console.WriteLine(true);
+    Console.WriteLine(CStringLiteral!"hello!");
+    foreach (i; 0 .. 4)
+        Console.WriteLine();
+
+    return 0;
+}
+```
+
+### Method 2: Clr Callback Host
+
+This method starts by running a .NET process and then P/Invoking into a native shared library and providing a callback method to grant access to the methods in `ClrBridge.dll`.  Once the native executable has been called, this method functions the same way as the Coreclr Library Host method, where it uses `ClrBridge.dll` to enable full access to the .NET CLR runtime. The ClrCallbackHost.exe .NET executable can be used to run native shared libraries:
+```
+ClrCallbackHost.exe <shared_library> <args>...
+```
+This will call the `_clrCallbackHostEntry` entry point with the given command-line arguments and a function pointer to load methods from `ClrBridge.dll`.  Here's an example program that uses this method:
+
+```D
+import std.stdio;
+import cstring;
+import clrbridge;
+import clrbridge.callbackhost;
+import mscorlib.System;
+
+extern (C) int _clrCallbackHostEntry(CreateDelegate createDelegate, int argc, CString* argv/*, CString* envp*/)
+{
+    import core.runtime;
+    try
+    {
+        Runtime.initialize();
+        initGlobalClrBridgeWithCallbackHost(createDelegate);
+        const result = mainClr(argc, argv);
+        Runtime.terminate();
+        return result;
+    }
+    catch (Throwable e)
+    {
+        printf("%s", e.toString().toCString());
+        return 1;
+    }
+}
+int mainClr(int argc, CString* argv)
+{
+    writefln("mainClr argc=%s!\n", argc);stdout.flush();
+    for (int i = 0; i < argc; i++)
+    {
+        writefln("arg[%s] '%s'", i, argv[i]);
+    }
+    Console.WriteLine(CStringLiteral!"Calling C# from D!");
+    return 0;
+}
+```
+
+### Method 3: COM Clr Host
+
+Support for this method has not been added yet.  This one is lower priority since as far as I know it will only work for Windows.
 
 # How to Build
 
 Note that all files created should go into the "out" directory.
 
 ```bash
+# clean and run everything, the rest of the commands allow you to build smaller pieces
+rund minish.d cleanBuildAll
+
 # download dependencies (i.e. DerelictUtil)
 rund minish.d downloadDeps
 
@@ -33,14 +113,9 @@ rund minish.d generateDWrappers
 # execute the example that uses the code from generateDWrappers
 rund example.d
 
-# build the ClrLibRunner tool
-rund minish.d buildClrLibRunner
+# build the ClrCallbackHost.exe .NET executable
+rund minish.d buildClrCallbackHost
 
-# run exmaple2 that uses ClrLibRunner
-rund minish.d runExample2
+# run exmaple2 that uses ClrCallbackHost.exe
+rund minish.d runCallbackHostExample
 ```
-
-# TODO
-
-* Add a .NET executable that calls a shared library, which can be used to call the CLR from native code instead.  It would pass in the command-line arguments and a callback function equivalent to libcoreclr's create_delegate function.
-* Add support for a COM backend (as far as I know this will only work on windows so it's lower priority than supporting the coreclr backend)

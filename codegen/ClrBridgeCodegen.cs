@@ -94,7 +94,7 @@ class Generator
                 writer.WriteLine("    import cstring : CString, CStringLiteral;");
                 writer.WriteLine("    static import clr;");
                 writer.WriteLine("    static import clrbridge;");
-                writer.WriteLine("    import clrbridgeglobal : globalClrBridge;");
+                writer.WriteLine("    import clrbridge.global : globalClrBridge;");
                 writer.WriteLine("    alias ObjectArray = clrbridge.Array!(clr.PrimitiveType.Object);");
                 writer.WriteLine("}");
                 moduleMap.Add(type.Namespace.NullToEmpty(), module);

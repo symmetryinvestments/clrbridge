@@ -22,7 +22,7 @@ static class HResultError
 
 class ClrLibRunner
 {
-    const String EntryName = "_mainClr";
+    const String EntryName = "_clrCallbackHostEntry";
     delegate Int32 EntryDelegate(IntPtr createDelegateFuncPtr, Int32 argc, String[] argv);
 
     public static Int32 Main(String[] args)
@@ -69,18 +69,15 @@ class ClrLibRunner
     // Returns: HRESULT on error
     static uint CreateDelegate(String assemblyName, String methodName, ref IntPtr outFuncAddr)
     {
-        Console.WriteLine("[DEBUG] CreateDelegate called");
-        Console.Out.Flush();
-        Console.WriteLine("[DEBUG] assemblyName={0} methodName={1}", assemblyName, methodName);
-        Console.Out.Flush();
+        //Console.WriteLine("[DEBUG] assemblyName={0} methodName={1}", assemblyName, methodName);Console.Out.Flush();
         Assembly assembly;
 
         try { assembly = Assembly.Load(assemblyName); }
         catch (FileNotFoundException) { return HResultError.AssemblyNotFound; }
         Debug.Assert(assembly != null); // I don't think Assembly.Load will ever return null;
 
-        //Console.WriteLine("assembly.FullName is {0}", assembly.FullName);
-        //Console.WriteLine("assembly.Location is {0}", assembly.Location);
+        //Console.WriteLine("[DEBUG] assembly.FullName is {0}", assembly.FullName);
+        //Console.WriteLine("[DEBUG] assembly.Location is {0}", assembly.Location);
         //Console.Out.Flush();
 
         Type type = assembly.GetType("ClrBridge");
@@ -91,13 +88,9 @@ class ClrLibRunner
         if (method is null)
             return HResultError.MethodNotFound;
 
-        //Console.WriteLine("method is {0}", method);
-        //Console.Out.Flush();
-
-        // we purposefully disallow this to keep this interface the same with the coreclr interfacen
+        // we purposefully disallow this to keep this interface the same with the coreclr interface
         if (!method.IsStatic) return HResultError.RequestedNonStaticMethod;
         if (method.IsGenericMethod) return HResultError.RequestedGenericMethod;
-
 
         ParameterInfo[] methodParams = method.GetParameters();
         Type[] delegateParamTypes = new Type[methodParams.Length + 1];
@@ -106,7 +99,6 @@ class ClrLibRunner
             delegateParamTypes[i] = methodParams[i].ParameterType;
         }
         delegateParamTypes[methodParams.Length] = method.ReturnType;
-        //Type delegateType = System.Linq.Expression.GetDelegateType(delegateParamTypes);
         Type delegateType = GetDelegateType(method);
         if (delegateType is null)
             return HResultError.RequestedUnknownMethod;

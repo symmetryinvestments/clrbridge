@@ -1,0 +1,9 @@
+@rm out
+rund minish.d downloadDeps
+rund minish.d buildClrBridge
+rund noCodegenExample.d
+rund minish.d buildClrBridgeCodegen
+rund minish.d generateDWrappers
+rund example.d
+rund minish.d buildClrCallbackHost
+rund minish.d runCallbackHostExample

@@ -1,0 +1,7 @@
+dotnetCompiler?=csc
+dotnetLoader?=mono
+@rm out/GenerateDelegateTypes.cs out/GenerateDelegateTypes.exe out/ClrCallbackHost.exe
+@mkdir out
+${dotnetCompiler} /out:out/GenerateDelegateTypes.exe callbackhost/GenerateDelegateTypes.cs
+${dotnetLoader} out/GenerateDelegateTypes.exe > out/ClrBridgeDelegateTypes.gen.cs
+${dotnetCompiler} /out:out/ClrCallbackHost.exe callbackhost/ClrCallbackHost.cs out/ClrBridgeDelegateTypes.gen.cs

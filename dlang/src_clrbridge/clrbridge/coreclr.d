@@ -1,5 +1,5 @@
 // module to initialize clrbridge via the coreclr library hosting mechanism
-module clrbridgecoreclr;
+module clrbridge.coreclr;
 
 import cstring;
 import hresult;
@@ -14,7 +14,7 @@ void initGlobalClrBridgeWithCoreclr(string clrBridgeDll)
     import std.file : exists;
     import coreclr : loadCoreclr;
     import coreclr.globalhost;
-    import clrbridgeglobal;
+    import clrbridge.global;
 
     // Add this check because it gives a nice error message for something that is probably
     // going to happen farily commonly

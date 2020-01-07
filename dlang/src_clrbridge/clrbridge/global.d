@@ -1,4 +1,4 @@
-module clrbridgeglobal;
+module clrbridge.global;
 
 import clrbridge;
 

@@ -1,3 +1,5 @@
+module clrbridge;
+
 import std.traits : Parameters;
 
 import cstring : CString, CStringLiteral;

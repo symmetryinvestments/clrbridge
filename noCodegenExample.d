@@ -14,8 +14,8 @@ import cstring;
 import coreclr;
 import coreclr.host;
 import clrbridge;
-import clrbridgeglobal;
-import clrbridgecoreclr;
+import clrbridge.global;
+import clrbridge.coreclr;
 
 static import clr;
 
