@@ -1,4 +1,4 @@
-dotnetCompiler?=csc
+@default dotnetCompiler csc
 
 @rm out/ClrBridge.gen.cs out/ClrBridge.dll
 @mkdir out

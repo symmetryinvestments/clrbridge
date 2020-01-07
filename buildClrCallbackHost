@@ -1,5 +1,5 @@
-dotnetCompiler?=csc
-dotnetLoader?=mono
+@default dotnetCompiler csc
+@default dotnetLoader mono
 @rm out/GenerateDelegateTypes.cs out/GenerateDelegateTypes.exe out/ClrCallbackHost.exe
 @mkdir out
 ${dotnetCompiler} /out:out/GenerateDelegateTypes.exe callbackhost/GenerateDelegateTypes.cs

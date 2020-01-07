@@ -40,16 +40,6 @@ int main(string[] args)
     return Interpreter(scriptFilename, 1, vars).run();
 }
 
-ptrdiff_t isAssign(const(char)[] line)
-{
-    foreach (i; 0 .. line.length)
-    {
-        if (line[i] == '=') return i;
-        if (line[i] == ' ') break;
-    }
-    return -1;
-}
-
 struct Interpreter
 {
     string scriptFilename;
@@ -110,26 +100,6 @@ struct Interpreter
             lineNumber++;
             if (lineTmp.startsWith("#"))
                 continue;
-
-            {
-                const equalIndex = isAssign(lineTmp);
-                if (equalIndex != -1)
-                {
-                    const value = substitute(lineTmp[equalIndex+1 .. $]);
-                    auto varname = lineTmp[0 .. equalIndex];
-                    if (varname.endsWith("?"))
-                    {
-                        varname = varname[0..$-1];
-                        if (varname !in vars)
-                            vars[varname.idup] = value;
-                    }
-                    else
-                    {
-                        vars[varname.idup] = value;
-                    }
-                    continue;
-                }
-            }
             const line = substitute(lineTmp);
             auto lineParts = splitHandleQuoted(line);
             if (lineParts.length == 0) continue;
@@ -146,7 +116,21 @@ struct Interpreter
 
     void runBuiltin(string cmd, string[] args)
     {
-        if (cmd == "@rm")
+        if (false) { }
+        else if (cmd == "@set")
+        {
+            if (args.length != 2)
+                errorExit(format("@set requires 2 arguments (dest, src), but got %s", args.length));
+            vars[args[0]] = args[1];
+        }
+        else if (cmd == "@default")
+        {
+            if (args.length != 2)
+                errorExit(format("@default requires 2 arguments (dest, src), but got %s", args.length));
+            if (args[0] !in vars)
+                vars[args[0]] = args[1];
+        }
+        else if (cmd == "@rm")
         {
             foreach (arg; args)
             {

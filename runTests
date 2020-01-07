@@ -1,4 +1,4 @@
-dotnetLoader?=mono
+@default dotnetLoader mono
 
 rund test/coreclrhostdriver.d
 
