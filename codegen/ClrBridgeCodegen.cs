@@ -222,6 +222,15 @@ class Generator
 
     void GenerateMethods(DModule module, Type type)
     {
+        foreach (ConstructorInfo constructor in type.GetConstructors())
+        {
+            module.writer.Write("    {0} static typeof(this) New", constructor.IsPrivate ? "private" : "public");
+            GenerateParameterList(module, constructor.GetParameters());
+            module.writer.WriteLine();
+            module.writer.WriteLine("    {");
+            module.writer.WriteLine("        return typeof(this).init;");
+            module.writer.WriteLine("    }");
+        }
         foreach (MethodInfo method in type.GetMethods())
         {
             //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -248,17 +257,8 @@ class Generator
             //
             // TODO: generate generic parameters
             //
-            module.writer.Write("(");
             ParameterInfo[] parameters = method.GetParameters();
-            {
-                string prefix = "";
-                foreach (ParameterInfo parameter in parameters)
-                {
-                    module.writer.Write("{0}{1} {2}", prefix, ToDType(parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
-                    prefix = ", ";
-                }
-            }
-            module.writer.Write(")");
+            GenerateParameterList(module, parameters);
             if (method.IsVirtual)
             {
                 module.writer.WriteLine(";");
@@ -274,6 +274,20 @@ class Generator
             }
             module.writer.WriteLine("    }");
         }
+    }
+
+    void GenerateParameterList(DModule module, ParameterInfo[] parameters)
+    {
+        module.writer.Write("(");
+        {
+            string prefix = "";
+            foreach (ParameterInfo parameter in parameters)
+            {
+                module.writer.Write("{0}{1} {2}", prefix, ToDType(parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
+                prefix = ", ";
+            }
+        }
+        module.writer.Write(")");
     }
 
     void GenerateMethodBody(DModule module, Type type, MethodInfo method, ParameterInfo[] parameters)

@@ -8,8 +8,14 @@ static import basicconsole;
 
 void runAll()
 {
-    writeln("--------------------------------------------------------------------------------");
-    writefln("test: basicconsole");
-    writeln("--------------------------------------------------------------------------------");
-    from!"basicconsole".test();
+    static foreach (testName; [
+        "basicconsole",
+        "stringstuff",
+    ])
+    {
+        writeln("--------------------------------------------------------------------------------");
+        writefln("test: %s", testName);
+        writeln("--------------------------------------------------------------------------------");
+        from!testName.test();
+    }
 }

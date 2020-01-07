@@ -75,10 +75,16 @@ public static partial class ClrBridge
         method.Invoke(obj, args);
     }
 
-    public static UInt32 NewObject(IntPtr typePtr, ref IntPtr outObject)
+    public static UInt32 NewObject(IntPtr typePtr, IntPtr argsArrayPtr, ref IntPtr outObject)
     {
         Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
-        outObject = GCHandle.ToIntPtr(GCHandle.Alloc(Activator.CreateInstance(type)));
+        Object obj;
+        if (argsArrayPtr == IntPtr.Zero)
+            obj = Activator.CreateInstance(type);
+        else
+            obj = Activator.CreateInstance(type, (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target);
+
+        outObject = GCHandle.ToIntPtr(GCHandle.Alloc(obj));
         return ResultCode.Success;
     }
 

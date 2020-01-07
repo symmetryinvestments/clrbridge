@@ -144,8 +144,8 @@ struct ClrBridge
         extern(C) uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
         extern(C) uint function(const Assembly assembly, CString name, Type* outType) nothrow @nogc GetType;
         extern(C) uint function(const Type type, CString name, const ArrayGeneric paramTypes, MethodInfo* outMethod) nothrow @nogc GetMethod;
-        extern(C) void function(const MethodInfo method, const DotNetObject obj, const Array!(clr.PrimitiveType.Object) paramTypes) nothrow @nogc CallGeneric;
-        extern(C) uint function(const Type type, DotNetObject* outObject) nothrow @nogc NewObject;
+        extern(C) void function(const MethodInfo method, const DotNetObject obj, const Array!(clr.PrimitiveType.Object) args) nothrow @nogc CallGeneric;
+        extern(C) uint function(const Type type, const Array!(clr.PrimitiveType.Object) args, DotNetObject* outObject) nothrow @nogc NewObject;
         extern(C) uint function(const Type type, uint initialsize, ArrayBuilderGeneric* outBuilder) nothrow @nogc ArrayBuilderNew;
         extern(C) uint function(const ArrayBuilderGeneric builder, ArrayGeneric* outArray) nothrow @nogc ArrayBuilderFinish;
         extern(C) size_t function(const ArrayBuilderGeneric builder, const DotNetObject obj) nothrow @nogc ArrayBuilderAddGeneric;
@@ -251,22 +251,26 @@ struct ClrBridge
         return method;
     }
 
-    ClrBridgeError tryNewObject(const Type type, DotNetObject* outObject) nothrow @nogc
+    ClrBridgeError tryNewObject(const Type type, const Array!(clr.PrimitiveType.Object) args, DotNetObject* outObject) nothrow @nogc
     {
-        const errorCode = funcs.NewObject(type, outObject);
+        const errorCode = funcs.NewObject(type, args, outObject);
         if (errorCode != 0)
             return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
-    DotNetObject newObject(const Type type)
+    DotNetObject newObject(const Type type, const Array!(clr.PrimitiveType.Object) args)
     {
         import std.format : format;
 
         DotNetObject obj;
-        const result = tryNewObject(type, &obj);
+        const result = tryNewObject(type, args, &obj);
         if (result.failed)
             throw new Exception(format("failed to create new object: %s", result));
         return obj;
+    }
+    DotNetObject newObject(const Type type)
+    {
+        return newObject(type, Array!(clr.PrimitiveType.Object).nullObject);
     }
 
     ClrBridgeError tryArrayBuilderNewGeneric(const Type type, uint initialSize, ArrayBuilderGeneric* outBuilder) nothrow @nogc
