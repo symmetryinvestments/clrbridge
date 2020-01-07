@@ -104,7 +104,7 @@ struct Interpreter
             auto lineParts = splitHandleQuoted(line);
             if (lineParts.length == 0) continue;
             const cmd = lineParts[0];
-            writefln("+ %s", line);
+            writefln("+ %s", escapeShellCommand(lineParts));
             stdout.flush();
             if (cmd.startsWith("@"))
                 runBuiltin(cmd, lineParts[1..$]);

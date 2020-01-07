@@ -25,13 +25,9 @@ int main(string[] args)
 {
     initGlobalClrBridgeWithCoreclr(buildPath(__FILE_FULL_PATH__.dirName, "out", "ClrBridge.dll"));
 
-    foreach (i; 0 .. 4)
-        Console.WriteLine();
-    Console.WriteLine(false);
+    Console.WriteLine();
     Console.WriteLine(true);
     Console.WriteLine(CStringLiteral!"hello!");
-    foreach (i; 0 .. 4)
-        Console.WriteLine();
 
     return 0;
 }
@@ -89,39 +85,9 @@ Support for this method has not been added yet.  This one is lower priority sinc
 
 Note that all files created should go into the "out" directory.
 
+You can run a full clean build with:
 ```bash
-# clean and run everything, the rest of the commands allow you to build smaller pieces
 rund minish.d cleanBuildAll
-
-# download dependencies (i.e. DerelictUtil)
-rund minish.d downloadDeps
-
-# build the ClrBridge.dll .NET library
-rund minish.d buildClrBridge
-
-# at this point the noCodegenExample.d should work this example
-# uses ClrBridge.dll to call into .NET code, but doesn't require any generated code
-rund noCodegenExample.d
-
-# build the ClrBridgeCodgen.exe .NET executable
-# this tool will take an assembly and generate D code to easily call into it
-rund minish.d buildClrBridgeCodegen
-
-# invoke ClrBridgeCodegen.exe to generate D wrapper code for common .NET libraries
-rund minish.d generateDWrappers
-
-# execute the example that uses the code from generateDWrappers
-rund example.d
-
-# build the ClrCallbackHost.exe .NET executable
-rund minish.d buildClrCallbackHost
-
-# run exmaple2 that uses ClrCallbackHost.exe
-rund minish.d runCallbackHostExample
-
-# run coreclr host tests
-rund test/coreclrhostdriver.d
-
-# run callback host tests
-rund minish.d runCallackHostTests
 ```
+
+The build is separated into individual steps which you can see in [cleanBuildAll](cleanBuildAll).

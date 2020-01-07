@@ -81,11 +81,11 @@ class ClrLibRunner
         //Console.Out.Flush();
 
         Type type = assembly.GetType("ClrBridge");
-        if (type is null)
+        if (type == null)
             return HResultError.AssemblyMissingClrBridgeType;
 
         MethodInfo method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
-        if (method is null)
+        if (method == null)
             return HResultError.MethodNotFound;
 
         // we purposefully disallow this to keep this interface the same with the coreclr interface
@@ -100,7 +100,7 @@ class ClrLibRunner
         }
         delegateParamTypes[methodParams.Length] = method.ReturnType;
         Type delegateType = GetDelegateType(method);
-        if (delegateType is null)
+        if (delegateType == null)
             return HResultError.RequestedUnknownMethod;
 
         Delegate dg = method.CreateDelegate(delegateType);
