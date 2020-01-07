@@ -3,29 +3,105 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
+static class ResultCode
+{
+    public const UInt32 Success = 0;
+    public const UInt32 ErrorFileNotFound = 1;
+    public const UInt32 ErrorTypeNotFound = 2;
+    public const UInt32 ErrorMethodNotFound = 3;
+    public const UInt32 ErrorAmbiguousMethod = 4;
+}
+
 public static partial class ClrBridge
 {
-    const UInt32 Success = 0;
-    const Byte ErrorFileNotFound = 1;
-    const Byte ErrorTypeNotFound = 2;
-    const Byte ErrorMethodNotFound = 3;
-    const Byte ErrorAmbiguousMethod = 4;
-
-    /*
-    // libcorclr doesn't seem to support marshalling arrays
-    static void TestArray(Object[] array)
+    // Most objects created by this class use GC.Alloc to pin them.
+    // Call this to unpin them.
+    public static void Release(IntPtr ptr)
     {
-        Console.WriteLine("TestArray");
-        Console.WriteLine("array.Length={0}", array.Length);
+        GCHandle.FromIntPtr(ptr).Free();
     }
 
-    // libcorclr doesn't seem to support varargs
-    static void TestVarargs(params Object[] args)
+    public static UInt32 LoadAssembly(string name, ref IntPtr outAssembly)
     {
-        Console.WriteLine("TestVarargs");
-        Console.WriteLine("args.Length={0}", args.Length);
+        Assembly assembly;
+        try { assembly = Assembly.Load(name); }
+        catch (FileNotFoundException) { return ResultCode.ErrorFileNotFound; }
+        outAssembly =  GCHandle.ToIntPtr(GCHandle.Alloc(assembly));
+        return ResultCode.Success;
     }
-    */
+    // TODO: add LoadAssemblyFile to call Assembly.LoadFile
+    //static IntPtr LoadAssemblyFile(string
+
+    public static UInt32 GetType(IntPtr assemblyPtr, string typeName, ref IntPtr outType)
+    {
+        Assembly assembly = (Assembly)GCHandle.FromIntPtr(assemblyPtr).Target;
+        Type type = assembly.GetType(typeName, false);
+        if (type == null)
+            return ResultCode.ErrorTypeNotFound;
+        outType = GCHandle.ToIntPtr(GCHandle.Alloc(type));
+        return ResultCode.Success;
+    }
+
+    public static UInt32 GetMethod(IntPtr typePtr, string methodName, IntPtr paramTypesArrayPtr, ref IntPtr outMethod)
+    {
+        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
+        Type[] paramTypes = null;
+        if (paramTypesArrayPtr != IntPtr.Zero)
+            paramTypes = (Type[])GCHandle.FromIntPtr(paramTypesArrayPtr).Target;
+
+        MethodInfo methodInfo;
+        try
+        {
+            if (paramTypes == null)
+                methodInfo = type.GetMethod(methodName);
+            else
+                methodInfo = type.GetMethod(methodName, paramTypes);
+        }
+        catch(AmbiguousMatchException) { return ResultCode.ErrorAmbiguousMethod; }
+        if (methodInfo == null)
+            return ResultCode.ErrorMethodNotFound;
+        outMethod = GCHandle.ToIntPtr(GCHandle.Alloc(methodInfo));
+        return ResultCode.Success;
+    }
+
+    // TODO: add IntPtr for return value
+    public static void CallGeneric(IntPtr methodPtr, IntPtr objPtr, IntPtr argsArrayPtr)
+    {
+        MethodInfo method = (MethodInfo)GCHandle.FromIntPtr(methodPtr).Target;
+        Object obj = null;
+        if (objPtr != IntPtr.Zero)
+            obj = GCHandle.FromIntPtr(objPtr).Target;
+        Object[] args = (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target;
+        method.Invoke(obj, args);
+    }
+
+    public static UInt32 NewObject(IntPtr typePtr, ref IntPtr outObject)
+    {
+        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
+        outObject = GCHandle.ToIntPtr(GCHandle.Alloc(Activator.CreateInstance(type)));
+        return ResultCode.Success;
+    }
+
+    public static UInt32 ArrayBuilderNew(IntPtr typePtr, UInt32 initialSize, ref IntPtr outBuilder)
+    {
+        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
+        Type arrayType = typeof(ArrayBuilder<>).MakeGenericType(type);
+        outBuilder = GCHandle.ToIntPtr(GCHandle.Alloc(Activator.CreateInstance(arrayType, initialSize)));
+        return ResultCode.Success;
+    }
+    public static UInt32 ArrayBuilderFinish(IntPtr arrayBuilderPtr, ref IntPtr outArray)
+    {
+        Object arrayBuilder = GCHandle.FromIntPtr(arrayBuilderPtr).Target;
+        outArray = GCHandle.ToIntPtr(GCHandle.Alloc(
+            arrayBuilder.GetType().GetMethod("Finish").Invoke(arrayBuilder, null)));
+        return ResultCode.Success;
+    }
+    public static void ArrayBuilderAddGeneric(IntPtr arrayBuilderPtr, IntPtr objPtr)
+    {
+        Object arrayBuilder = GCHandle.FromIntPtr(arrayBuilderPtr).Target;
+        Object obj = GCHandle.FromIntPtr(objPtr).Target;
+        arrayBuilder.GetType().GetMethod("Add").Invoke(arrayBuilder, new Object[] {obj});
+    }
 
     public static void DebugWriteObject(IntPtr objPtr)
     {
@@ -43,89 +119,6 @@ public static partial class ClrBridge
             }
         }
         Console.WriteLine("DebugWriteObject: '{0}'", obj);
-    }
-
-    // Most objects created by this class use GC.Alloc to pin them.
-    // Call this to unpin them.
-    public static void Release(IntPtr ptr)
-    {
-        GCHandle.FromIntPtr(ptr).Free();
-    }
-
-    public static UInt32 LoadAssembly(string name, ref IntPtr handle)
-    {
-        Assembly assembly;
-        try { assembly = Assembly.Load(name); }
-        catch (FileNotFoundException) { return ErrorFileNotFound; }
-        handle =  GCHandle.ToIntPtr(GCHandle.Alloc(assembly));
-        return Success;
-    }
-    // TODO: add LoadAssemblyFile to call Assembly.LoadFile
-    //static IntPtr LoadAssemblyFile(string
-
-    public static IntPtr GetType(IntPtr assemblyPtr, string typeName)
-    {
-        Assembly assembly = (Assembly)GCHandle.FromIntPtr(assemblyPtr).Target;
-        Type type = assembly.GetType(typeName, false);
-        if (type == null)
-            return new IntPtr(ErrorTypeNotFound);
-        return GCHandle.ToIntPtr(GCHandle.Alloc(type));
-    }
-
-    public static IntPtr GetMethod(IntPtr typePtr, string methodName, IntPtr paramTypesArrayPtr)
-    {
-        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
-        Type[] paramTypes = null;
-        if (paramTypesArrayPtr != IntPtr.Zero)
-            paramTypes = (Type[])GCHandle.FromIntPtr(paramTypesArrayPtr).Target;
-
-        MethodInfo methodInfo;
-        try
-        {
-            if (paramTypes == null)
-                methodInfo = type.GetMethod(methodName);
-            else
-                methodInfo = type.GetMethod(methodName, paramTypes);
-        }
-        catch(AmbiguousMatchException) { return new IntPtr(ErrorAmbiguousMethod); }
-        if (methodInfo == null)
-            return new IntPtr(ErrorMethodNotFound);
-        return GCHandle.ToIntPtr(GCHandle.Alloc(methodInfo));
-    }
-
-    public static void CallGeneric(IntPtr methodPtr, IntPtr objPtr, IntPtr argsArrayPtr)
-    {
-        MethodInfo method = (MethodInfo)GCHandle.FromIntPtr(methodPtr).Target;
-        Object obj = null;
-        if (objPtr != IntPtr.Zero)
-            obj = GCHandle.FromIntPtr(objPtr).Target;
-        Object[] args = (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target;
-        method.Invoke(obj, args);
-    }
-
-    public static IntPtr NewObject(IntPtr typePtr)
-    {
-        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
-        return GCHandle.ToIntPtr(GCHandle.Alloc(Activator.CreateInstance(type)));
-    }
-
-    public static IntPtr ArrayBuilderNew(IntPtr typePtr, UInt32 initialSize)
-    {
-        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
-        Type arrayType = typeof(ArrayBuilder<>).MakeGenericType(type);
-        return GCHandle.ToIntPtr(GCHandle.Alloc(Activator.CreateInstance(arrayType, initialSize)));
-    }
-    public static IntPtr ArrayBuilderFinish(IntPtr arrayBuilderPtr)
-    {
-        Object arrayBuilder = GCHandle.FromIntPtr(arrayBuilderPtr).Target;
-        return GCHandle.ToIntPtr(GCHandle.Alloc(
-            arrayBuilder.GetType().GetMethod("Finish").Invoke(arrayBuilder, null)));
-    }
-    public static void ArrayBuilderAddGeneric(IntPtr arrayBuilderPtr, IntPtr objPtr)
-    {
-        Object arrayBuilder = GCHandle.FromIntPtr(arrayBuilderPtr).Target;
-        Object obj = GCHandle.FromIntPtr(objPtr).Target;
-        arrayBuilder.GetType().GetMethod("Add").Invoke(arrayBuilder, new Object[] {obj});
     }
 }
 

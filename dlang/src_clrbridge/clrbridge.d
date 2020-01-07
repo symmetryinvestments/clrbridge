@@ -138,25 +138,23 @@ struct ClrBridge
 {
     struct Funcs
     {
-        //extern(C) void function(void** args) nothrow @nogc TestArray;
-        //extern(C) void function(size_t a, ...) nothrow @nogc TestVarargs;
-        extern(C) void function(const DotNetObject obj) nothrow @nogc DebugWriteObject;
         extern(C) void function(const DotNetObject obj) nothrow @nogc Release;
         extern(C) uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
-        extern(C) size_t function(const Assembly assembly, CString name) nothrow @nogc GetType;
-        extern(C) size_t function(const Type type, CString name, const ArrayGeneric paramTypes) nothrow @nogc GetMethod;
-        extern(C) size_t function(const MethodInfo method, const DotNetObject obj, const Array!(clr.PrimitiveType.Object) paramTypes) nothrow @nogc CallGeneric;
-        extern(C) size_t function(const Type type) nothrow @nogc NewObject;
-        extern(C) size_t function(const Type type, uint initialsize) nothrow @nogc ArrayBuilderNew;
-        extern(C) size_t function(const ArrayBuilderGeneric builder) nothrow @nogc ArrayBuilderFinish;
+        extern(C) uint function(const Assembly assembly, CString name, Type* outType) nothrow @nogc GetType;
+        extern(C) uint function(const Type type, CString name, const ArrayGeneric paramTypes, MethodInfo* outMethod) nothrow @nogc GetMethod;
+        extern(C) void function(const MethodInfo method, const DotNetObject obj, const Array!(clr.PrimitiveType.Object) paramTypes) nothrow @nogc CallGeneric;
+        extern(C) uint function(const Type type, DotNetObject* outObject) nothrow @nogc NewObject;
+        extern(C) uint function(const Type type, uint initialsize, ArrayBuilderGeneric* outBuilder) nothrow @nogc ArrayBuilderNew;
+        extern(C) uint function(const ArrayBuilderGeneric builder, ArrayGeneric* outArray) nothrow @nogc ArrayBuilderFinish;
         extern(C) size_t function(const ArrayBuilderGeneric builder, const DotNetObject obj) nothrow @nogc ArrayBuilderAddGeneric;
         static foreach (type; clr.primitiveTypes)
         {
-            mixin("extern(C) size_t function(" ~ type.dlangType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
+            mixin("extern(C) DotNetObject function(" ~ type.dlangType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
             mixin("extern(C) size_t function(const MethodInfo method, " ~ type.dlangType ~ ") nothrow @nogc CallStatic" ~ type.name ~ ";");
             mixin("extern(C) size_t function(const ArrayBuilder!(clr.PrimitiveType." ~ type.name ~ ") builder, "
                 ~ type.dlangType ~ ") nothrow @nogc ArrayBuilderAdd" ~ type.name ~ ";");
         }
+        extern(C) void function(const DotNetObject obj) nothrow @nogc DebugWriteObject;
     }
     Funcs funcs;
     union PrimitiveTypes
@@ -183,10 +181,7 @@ struct ClrBridge
 
     ClrBridgeError tryBox(clr.PrimitiveType T)(clr.DlangType!T value, DotNetObject *outObject) nothrow @nogc
     {
-        const result = mixin("funcs.Box" ~ clr.Info!T.name ~ "(value)");
-        if (result <= 0xFF)
-            return ClrBridgeError.forward(cast(ubyte)result);
-        *outObject = DotNetObject(cast(void*)result);
+        *outObject = mixin("funcs.Box" ~ clr.Info!T.name ~ "(value)");
         return ClrBridgeError.none;
     }
     DotNetObject box(clr.PrimitiveType T)(clr.DlangType!T value)
@@ -220,10 +215,9 @@ struct ClrBridge
 
     ClrBridgeError tryGetType(const Assembly assembly, CString name, Type* outType) nothrow @nogc
     {
-        const result = funcs.GetType(assembly, name);
-        if (result <= 0xFF)
-            return ClrBridgeError.forward(cast(ubyte)result);
-        *outType = Type(DotNetObject(cast(void*)result));
+        const errorCode = funcs.GetType(assembly, name, outType);
+        if (errorCode != 0)
+            return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
     Type getType(const Assembly assembly, CString name)
@@ -239,10 +233,9 @@ struct ClrBridge
 
     ClrBridgeError tryGetMethod(const Type type, CString name, const ArrayGeneric paramTypes, MethodInfo* outMethod) nothrow @nogc
     {
-        const result = funcs.GetMethod(type, name, paramTypes);
-        if (result <= 0xFF)
-            return ClrBridgeError.forward(cast(ubyte)result);
-        *outMethod = MethodInfo(DotNetObject(cast(void*)result));
+        const errorCode = funcs.GetMethod(type, name, paramTypes, outMethod);
+        if (errorCode != 0)
+            return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
     MethodInfo getMethod(const Type type, CString name, const ArrayGeneric paramTypes)
@@ -258,10 +251,9 @@ struct ClrBridge
 
     ClrBridgeError tryNewObject(const Type type, DotNetObject* outObject) nothrow @nogc
     {
-        const result = funcs.NewObject(type);
-        if (result <= 0xFF)
-            return ClrBridgeError.forward(cast(ubyte)result);
-        *outObject = DotNetObject(cast(void*)result);
+        const errorCode = funcs.NewObject(type, outObject);
+        if (errorCode != 0)
+            return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
     DotNetObject newObject(const Type type)
@@ -277,10 +269,9 @@ struct ClrBridge
 
     ClrBridgeError tryArrayBuilderNewGeneric(const Type type, uint initialSize, ArrayBuilderGeneric* outBuilder) nothrow @nogc
     {
-        const result = funcs.ArrayBuilderNew(type, initialSize);
-        if (result <= 0xFF)
-            return ClrBridgeError.forward(cast(ubyte)result);
-        *outBuilder = ArrayBuilderGeneric(DotNetObject(cast(void*)result));
+        const errorCode = funcs.ArrayBuilderNew(type, initialSize, outBuilder);
+        if (errorCode != 0)
+            return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
     ClrBridgeError tryArrayBuilderNew(clr.PrimitiveType T)(uint initialSize, ArrayBuilder!T* outBuilder) nothrow @nogc
@@ -321,10 +312,9 @@ struct ClrBridge
 
     ClrBridgeError tryArrayBuilderFinishGeneric(const ArrayBuilderGeneric ab, ArrayGeneric* outArray) nothrow @nogc
     {
-        const result = funcs.ArrayBuilderFinish(ab);
-        if (result <= 0xFF)
-            return ClrBridgeError.forward(cast(ubyte)result);
-        *outArray = ArrayGeneric(DotNetObject(cast(void*)result));
+        const errorCode = funcs.ArrayBuilderFinish(ab, outArray);
+        if (errorCode != 0)
+            return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
     ClrBridgeError tryArrayBuilderFinish(clr.PrimitiveType T)(const ArrayBuilder!T ab, Array!T* outArray) nothrow @nogc

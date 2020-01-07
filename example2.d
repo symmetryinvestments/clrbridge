@@ -4,11 +4,10 @@ import std.stdio;
 import hresult;
 import cstring;
 
-// uncommenting causes dlopen to fail
 import clrbridge;
 import clrbridgeglobal;
 
-// TODO: should return HRESULT but is causing dlopen to fail???
+// TODO: move this setup code into clrbridge.d
 alias CreateDelegate = extern(C) HRESULT function(CString assemblyName, CString methodName, void** outFuncAddr) nothrow @nogc;
 
 // TODO: move this function to the clrbridge library
@@ -20,7 +19,21 @@ extern(C) int mainClr(CreateDelegate createDelegate, int argc/*, CString* argv, 
     try
     {
         Runtime.initialize();
-        const result = mainClr2(createDelegate, argc/*, argv*/);
+        {
+            static struct CreateDelegateFactory
+            {
+                CreateDelegate createDelegate;
+                HRESULT createClrBridgeDelegate(CString methodName, void** outFuncAddr) const
+                {
+                    return cast(HRESULT)createDelegate(CStringLiteral!"ClrBridge", methodName, outFuncAddr);
+                }
+            }
+            const factory = CreateDelegateFactory(createDelegate);
+            const result = loadClrBridge(&factory.createClrBridgeDelegate, &globalClrBridge);
+            if (result.failed)
+                writefln("Error: loadClrBridge failed with %s", result);
+        }
+        const result = mainClr2(argc/*, argv*/);
         Runtime.terminate();
         return result;
     }
@@ -33,22 +46,10 @@ extern(C) int mainClr(CreateDelegate createDelegate, int argc/*, CString* argv, 
     return 0;
 }
 
-int mainClr2(CreateDelegate createDelegate, int argc/*, CString* argv*/)
+int mainClr2(int argc/*, CString* argv*/)
 {
-    printf("mainClr2 argc=%d!\n", argc);
-    static struct CreateDelegateFactory
-    {
-        CreateDelegate createDelegate;
-        HRESULT createClrBridgeDelegate(CString methodName, void** outFuncAddr) const
-        {
-            return cast(HRESULT)createDelegate(CStringLiteral!"ClrBridge", methodName, outFuncAddr);
-        }
-    }
-    const factory = CreateDelegateFactory(createDelegate);
-    {
-        const result = loadClrBridge(&factory.createClrBridgeDelegate, &globalClrBridge);
-        if (result.failed)
-            writefln("Error: loadClrBridge failed with %s", result);
-    }
+    writefln("mainClr2 argc=%s!\n", argc);stdout.flush();
+    import mscorlib.System;
+    Console.WriteLine(CStringLiteral!"Calling C# from D!");
     return 0;
 }
