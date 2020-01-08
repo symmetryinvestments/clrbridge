@@ -1,6 +1,6 @@
 import cstring;
 import clr : Decimal;
-import Primitives : Primitives;
+import primitives : Primitives;
 import std.stdio;
 void test()
 {

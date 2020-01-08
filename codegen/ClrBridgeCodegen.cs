@@ -224,7 +224,8 @@ class Generator
             Type fieldType = field.FieldType;
             String fromDll = (fieldType.Assembly == thisAssembly) ? "" :
                 GetExtraAssemblyInfo(fieldType.Assembly).fromDllPrefix;
-            module.writer.WriteLine("    static /*make static temporarily so we can cast to DotNetObject*/ {0} {1}; // fromPrefix '{2}' {3} {4}",
+            // fields are represented as D @property functions
+            module.writer.WriteLine("    @property {0} {1}() {{ return typeof(return).init; }}; // fromPrefix '{2}' {3} {4}",
                 ToDType(fieldType),
                 field.Name.ToDIdentifier(),
                 fromDll,

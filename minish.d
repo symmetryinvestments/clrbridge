@@ -37,20 +37,62 @@ int main(string[] args)
         writefln("Usage: minish [VAR=VALUE]... SCRIPT_FILE");
         return 1;
     }
-    return Interpreter(scriptFilename, 1, vars).run();
+    return Interpreter(scriptFilename, 1).run(vars);
+}
+
+class Block
+{
+    enum Type { script, foreach_ }
+    Type type;
+    string[string] vars;
+    union
+    {
+        struct LoopData
+        {
+            string varName;
+            string[] varValues;
+            Appender!(string[]) lines;
+        }
+        LoopData loopData = void;
+    }
+    this(Type type, string[string] vars = string[string].init)
+    {
+        this.type = type;
+        this.vars = vars;
+        if (type == Type.foreach_)
+            loopData = LoopData.init;
+    }
+}
+
+static struct VarRef
+{
+    string value;
+    Block block;
 }
 
 struct Interpreter
 {
     string scriptFilename;
     int lineNumber;
-    string[string] vars;
+    Appender!(Block[]) blockStack;
 
     void errorExit(string msg)
     {
         writefln("%s(%s) ERROR: %s", scriptFilename, lineNumber, msg);
         exit(1);
     }
+
+    VarRef tryGetVar(const(char)[] name)
+    {
+        foreach_reverse(block; blockStack.data)
+        {
+            const value = block.vars.get(cast(string)name, null);
+            if (value !is null)
+                return VarRef(value, block);
+        }
+        return VarRef(null);
+    }
+
     string substitute(const(char)[] str)
     {
         auto result = appender!(char[])();
@@ -66,10 +108,10 @@ struct Interpreter
                     i++;
                     if (i >= str.length) errorExit("'${' not terminated with '}'");
                 } while (str[i] != '}');
-                const varname = str[start .. i];
-                const value = vars.get(cast(string)varname, null);
-                if (value is null) errorExit(format("unknown variable ${%s}", varname));
-                result.put(vars[str[start..i]]);
+                const varName = str[start .. i];
+                const valueRef = tryGetVar(varName);
+                if (valueRef.value is null) errorExit(format("unknown variable ${%s}", varName));
+                result.put(valueRef.value);
             }
             else
             {
@@ -93,26 +135,56 @@ struct Interpreter
             ~ splitHandleQuoted(s[nextQuoteIndex + 1 .. $]);
     }
 
-    int run()
+    int run(string[string] commandLineVars)
     {
+        blockStack.put(new Block(Block.Type.script, commandLineVars));
         foreach (lineTmp; File(scriptFilename, "r").byLine)
         {
             lineNumber++;
             if (lineTmp.startsWith("#"))
                 continue;
-            const line = substitute(lineTmp);
-            auto lineParts = splitHandleQuoted(line);
-            if (lineParts.length == 0) continue;
-            const cmd = lineParts[0];
-            writefln("+ %s", escapeShellCommand(lineParts));
-            stdout.flush();
-            if (cmd.startsWith("@"))
-                runBuiltin(cmd, lineParts[1..$]);
+            auto block = blockStack.data[$-1];
+            if (block.type == Block.Type.foreach_)
+            {
+                if (lineTmp != "@end")
+                    block.loopData.lines.put(lineTmp.idup);
+                else
+                {
+                    foreach (varValue; block.loopData.varValues)
+                    {
+                        block.vars[block.loopData.varName] = varValue;
+                        foreach (loopLine; block.loopData.lines.data)
+                        {
+                            const result = runLine(substitute(loopLine));
+                            if (result != 0) return result;
+                        }
+                    }
+                    blockStack.shrinkTo(blockStack.data.length - 1);
+                }
+            }
             else
-                runProgram(lineParts);
+            {
+                const result = runLine(substitute(lineTmp));
+                if (result != 0) return result;
+            }
         }
         return 0;
     }
+
+    int runLine(string processedLine)
+    {
+        auto lineParts = splitHandleQuoted(processedLine);
+        if (lineParts.length == 0) return 0;
+        const cmd = lineParts[0];
+        writefln("+ %s", escapeShellCommand(lineParts));
+        stdout.flush();
+        if (cmd.startsWith("@"))
+            runBuiltin(cmd, lineParts[1..$]);
+        else
+            runProgram(lineParts);
+        return 0;
+    }
+
 
     void enforceArgCount(string cmd, string[] args, size_t expected)
     {
@@ -123,16 +195,27 @@ struct Interpreter
     void runBuiltin(string cmd, string[] args)
     {
         if (false) { }
+        else if (cmd == "@echo")
+        {
+            string prefix = "";
+            foreach (arg; args)
+            {
+                writef("%s%s", prefix, arg);
+                prefix = " ";
+            }
+            writeln();
+        }
         else if (cmd == "@set")
         {
             enforceArgCount(cmd, args, 2);
-            vars[args[0]] = args[1];
+            blockStack.data[$-1].vars[args[0]] = args[1];
         }
         else if (cmd == "@default")
         {
             enforceArgCount(cmd, args, 2);
-            if (args[0] !in vars)
-                vars[args[0]] = args[1];
+            auto vars = &blockStack.data[$-1].vars;
+            if (args[0] !in *vars)
+                (*vars)[args[0]] = args[1];
         }
         else if (cmd == "@rm")
         {
@@ -163,6 +246,20 @@ struct Interpreter
         {
             enforceArgCount(cmd, args, 2);
             copy(args[0], args[1]);
+        }
+        else if (cmd == "@foreach")
+        {
+            auto block = new Block(Block.Type.foreach_);
+            if (args.length > 0)
+            {
+                block.loopData.varName = args[0];
+                block.loopData.varValues = args[1..$];
+            }
+            blockStack.put(block);
+        }
+        else if (cmd == "@end")
+        {
+            errorExit("got '@end' outside of any block");
         }
         else errorExit(format("unknown builtin command '%s'", cmd));
     }
