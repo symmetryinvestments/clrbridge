@@ -3,17 +3,17 @@
 
 @set unitTests "primitives fields"
 
-@foreach test ${unitTests}
+@scope @foreach test ${unitTests}
     @rm out/test/unit/${test}
     @mkdir out/test/unit/${test}
 @end
 
-@foreach test ${unitTests}
+@scope @foreach test ${unitTests}
     ${dotnetCompiler} /out:out/test/unit/${test}/${test}.dll /t:library test/unit/${test}/${test}.cs
     ${dotnetLoader} out/ClrBridgeCodegen.exe file:out/test/unit/${test}/${test}.dll out/test/unit/${test}/src
 @end
 
-@foreach test ${unitTests}
+@scope @foreach test ${unitTests}
     rund -g -debug -I=out/test/unit/${test}/src --pass=test/unit/${test}/test.d test/unit/unittestcoreclr.d out/test/unit/${test}/${test}.dll
 @end
 

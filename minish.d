@@ -13,7 +13,7 @@ int main(string[] args)
     args = args[1..$];
 
     string scriptFilename = null;
-    string[string] vars;
+    string[string] varsFromCommandLine;
 
     foreach (arg; args)
     {
@@ -29,7 +29,7 @@ int main(string[] args)
         }
         else
         {
-            vars[arg[0 .. equalIndex]] = arg[equalIndex+1 .. $];
+            varsFromCommandLine[arg[0 .. equalIndex]] = arg[equalIndex+1 .. $];
         }
     }
     if (scriptFilename is null)
@@ -37,60 +37,40 @@ int main(string[] args)
         writefln("Usage: minish [VAR=VALUE]... SCRIPT_FILE");
         return 1;
     }
-    return Interpreter(scriptFilename, 1).run(vars);
+    auto lines = File(scriptFilename, "r").byLineCopy.array;
+    return Interpreter(scriptFilename, lines, 0).runScript(varsFromCommandLine);
 }
 
-class Block
+class Scope
 {
-    enum Type { script, foreach_ }
-    Type type;
+    Scope parent;
     string[string] vars;
-    union
+    this(Scope parent, string[string] vars = string[string].init)
     {
-        struct LoopData
-        {
-            string varName;
-            string[] varValues;
-            Appender!(string[]) lines;
-        }
-        LoopData loopData = void;
-    }
-    this(Type type, string[string] vars = string[string].init)
-    {
-        this.type = type;
+        this.parent = parent;
         this.vars = vars;
-        if (type == Type.foreach_)
-            loopData = LoopData.init;
     }
-}
-
-static struct VarRef
-{
-    string value;
-    Block block;
+    string get(const(char)[] name)
+    {
+        const value = vars.get(cast(string)name, null);
+        if (value !is null)
+            return value;
+        return (parent is null) ? null : parent.get(name);
+    }
 }
 
 struct Interpreter
 {
     string scriptFilename;
-    int lineNumber;
-    Appender!(Block[]) blockStack;
+    string[] lines;
+    size_t currentLineIndex;
+    Scope currentScope;
+    bool disabled;
 
     void errorExit(string msg)
     {
-        writefln("%s(%s) ERROR: %s", scriptFilename, lineNumber, msg);
+        writefln("%s(%s) ERROR: %s", scriptFilename, currentLineIndex + 1, msg);
         exit(1);
-    }
-
-    VarRef tryGetVar(const(char)[] name)
-    {
-        foreach_reverse(block; blockStack.data)
-        {
-            const value = block.vars.get(cast(string)name, null);
-            if (value !is null)
-                return VarRef(value, block);
-        }
-        return VarRef(null);
     }
 
     string substitute(const(char)[] str)
@@ -109,9 +89,9 @@ struct Interpreter
                     if (i >= str.length) errorExit("'${' not terminated with '}'");
                 } while (str[i] != '}');
                 const varName = str[start .. i];
-                const valueRef = tryGetVar(varName);
-                if (valueRef.value is null) errorExit(format("unknown variable ${%s}", varName));
-                result.put(valueRef.value);
+                const value = currentScope.get(varName);
+                if (value is null) errorExit(format("unknown variable ${%s}", varName));
+                result.put(value);
             }
             else
             {
@@ -135,56 +115,93 @@ struct Interpreter
             ~ splitHandleQuoted(s[nextQuoteIndex + 1 .. $]);
     }
 
-    int run(string[string] commandLineVars)
+    int runScript(string[string] commandLineVars)
     {
-        blockStack.put(new Block(Block.Type.script, commandLineVars));
-        foreach (lineTmp; File(scriptFilename, "r").byLine)
+        currentScope = new Scope(null, commandLineVars);
+        runLines(0, false);
+        if (currentLineIndex != lines.length)
+            errorExit(format("too many '@end' directives (expected %s got %s)", lines.length, currentLineIndex));
+        assert(currentScope.parent is null);
+        return 0;
+    }
+
+    // check currentLineIndex after this returns
+    void runLines(size_t startLineIndex, bool disable)
+    {
+        const saveDisabled = this.disabled;
+        this.disabled = disable;
+        scope(exit) this.disabled = saveDisabled;
+
+        for (size_t nextLineIndex = startLineIndex; nextLineIndex < lines.length; nextLineIndex++)
         {
-            lineNumber++;
-            if (lineTmp.startsWith("#"))
+            this.currentLineIndex = nextLineIndex; // save the current line
+            const line = lines[nextLineIndex];
+            if (line.startsWith("#"))
                 continue;
-            auto block = blockStack.data[$-1];
-            if (block.type == Block.Type.foreach_)
+            auto lineParts = splitHandleQuoted(substitute(line));
+            if (lineParts.length == 0) continue;
+            string cmd = lineParts[0];
+            writefln("+ %s", escapeShellCommand(lineParts));
+            stdout.flush();
+            if (!cmd.startsWith("@"))
             {
-                if (lineTmp != "@end")
-                    block.loopData.lines.put(lineTmp.idup);
-                else
+                if (!disabled)
+                    runProgram(lineParts);
+                continue;
+            }
+            string[] args = lineParts[1..$];
+            //
+            // Handle special builtins that affect control flow
+            //
+            if (false) { }
+            else if (cmd == "@end")
+            {
+                enforceArgCount(cmd, args, 0);
+                break;
+            }
+            else if (cmd == "@foreach")
+            {
+                nextLineIndex = foreachBuiltin(args);
+            }
+            else if (cmd == "@scope")
+            {
+                currentScope = new Scope(currentScope);
+                scope (exit) currentScope = currentScope.parent;
+                if (args.length == 0)
                 {
-                    foreach (varValue; block.loopData.varValues)
-                    {
-                        block.vars[block.loopData.varName] = varValue;
-                        foreach (loopLine; block.loopData.lines.data)
-                        {
-                            const result = runLine(substitute(loopLine));
-                            if (result != 0) return result;
-                        }
-                    }
-                    blockStack.shrinkTo(blockStack.data.length - 1);
+                    runLines(currentLineIndex + 1, disabled);
+                    nextLineIndex = currentLineIndex - 1;
                 }
+                else if (args[0] == "@foreach")
+                    nextLineIndex = foreachBuiltin(args[1..$]);
+                else
+                    errorExit(format("invalid argument to @scope '%s'", args[0]));
             }
             else
             {
-                const result = runLine(substitute(lineTmp));
-                if (result != 0) return result;
+                if (!disabled)
+                    runSimpleBuiltin(cmd, args);
             }
         }
-        return 0;
+        currentLineIndex++;
     }
 
-    int runLine(string processedLine)
+    size_t foreachBuiltin(string[] args)
     {
-        auto lineParts = splitHandleQuoted(processedLine);
-        if (lineParts.length == 0) return 0;
-        const cmd = lineParts[0];
-        writefln("+ %s", escapeShellCommand(lineParts));
-        stdout.flush();
-        if (cmd.startsWith("@"))
-            runBuiltin(cmd, lineParts[1..$]);
+        if (disabled || args.length == 0)
+            runLines(currentLineIndex + 1, true);
         else
-            runProgram(lineParts);
-        return 0;
+        {
+            const varName = args[0];
+            const loopStartLineIndex = currentLineIndex + 1;
+            foreach (varValue; args[1..$])
+            {
+                currentScope.vars[varName] = varValue;
+                runLines(loopStartLineIndex, false);
+            }
+        }
+        return currentLineIndex - 1;
     }
-
 
     void enforceArgCount(string cmd, string[] args, size_t expected)
     {
@@ -192,9 +209,13 @@ struct Interpreter
             errorExit(format("the '%s' builtin requires %s arguments but got %s", cmd, expected, args.length));
     }
 
-    void runBuiltin(string cmd, string[] args)
+    void runSimpleBuiltin(string cmd, string[] args)
     {
         if (false) { }
+        else if (cmd == "@note")
+        {
+            // does nothing, just causes a line/message to get printed
+        }
         else if (cmd == "@echo")
         {
             string prefix = "";
@@ -208,14 +229,13 @@ struct Interpreter
         else if (cmd == "@set")
         {
             enforceArgCount(cmd, args, 2);
-            blockStack.data[$-1].vars[args[0]] = args[1];
+            currentScope.vars[args[0]] = args[1];
         }
         else if (cmd == "@default")
         {
             enforceArgCount(cmd, args, 2);
-            auto vars = &blockStack.data[$-1].vars;
-            if (args[0] !in *vars)
-                (*vars)[args[0]] = args[1];
+            if (args[0] !in currentScope.vars)
+                currentScope.vars[args[0]] = args[1];
         }
         else if (cmd == "@rm")
         {
@@ -246,20 +266,6 @@ struct Interpreter
         {
             enforceArgCount(cmd, args, 2);
             copy(args[0], args[1]);
-        }
-        else if (cmd == "@foreach")
-        {
-            auto block = new Block(Block.Type.foreach_);
-            if (args.length > 0)
-            {
-                block.loopData.varName = args[0];
-                block.loopData.varValues = args[1..$];
-            }
-            blockStack.put(block);
-        }
-        else if (cmd == "@end")
-        {
-            errorExit("got '@end' outside of any block");
         }
         else errorExit(format("unknown builtin command '%s'", cmd));
     }
