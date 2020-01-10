@@ -124,25 +124,31 @@ class Generator
             if (foundInvalidChar)
                 continue;
 */
-            if (type.IsGenericType)
-            {
-                Message(module, "skipping type {0} because generics aren't implemented", type.Name);
-                continue;
-            }
 
             if (type.IsValueType)
             {
                 if (type.IsEnum)
                 {
+                    Debug.Assert(!type.IsGenericType, "enum types can be generic?");
                     GenerateEnum(module, type);
                 }
                 else
                 {
+                    if (type.IsGenericType)
+                    {
+                        Message(module, "skipping type {0} because generics structs aren't implemented", type.Name);
+                        continue;
+                    }
                     GenerateStruct(module, type);
                 }
             }
             else if (type.IsInterface)
             {
+                if (type.IsGenericType)
+                {
+                    Message(module, "skipping type {0} because generics interfaces aren't implemented", type.Name);
+                    continue;
+                }
                 GenerateInterface(module, type);
             }
             else
@@ -150,6 +156,11 @@ class Generator
                 Debug.Assert(type.IsClass);
                 if (typeof(Delegate).IsAssignableFrom(type))
                 {
+                    if (type.IsGenericType)
+                    {
+                        Message(module, "skipping type {0} because generics delegates aren't implemented", type.Name);
+                        continue;
+                    }
                     GenerateDelegate(module, type);
                 }
                 else
@@ -309,6 +320,7 @@ class Generator
             // TODO: generate generic parameters
             //
             ParameterInfo[] parameters = method.GetParameters();
+            GenerateGenericParameters(module, method.GetGenericArguments());
             GenerateParameterList(module, parameters);
             if (method.IsVirtual)
             {
@@ -319,6 +331,21 @@ class Generator
             module.writer.WriteLine("    {");
             GenerateMethodBody(module, type, method, method.ReturnType, parameters);
             module.writer.WriteLine("    }");
+        }
+    }
+
+    void GenerateGenericParameters(DModule module, Type[] genericTypes)
+    {
+        if (genericTypes != null)
+        {
+            module.writer.Write("(");
+            string prefix = "";
+            foreach (Type t in genericTypes)
+            {
+                module.writer.Write("{0}{1}", prefix, t.Name);
+                prefix = ", ";
+            }
+            module.writer.Write(")");
         }
     }
 
