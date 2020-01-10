@@ -173,11 +173,46 @@ class Generator
 
     void GenerateEnum(DModule module, Type type)
     {
-        module.writer.WriteLine("enum {0}", Util.GetTypeName(type));
+        const String EnumValueFieldName = "value__";
+        module.writer.WriteLine("/* .NET Enum */ struct {0}", Util.GetTypeName(type));
         module.writer.WriteLine("{");
-        module.writer.WriteLine("    placeholder, // TODO: generate actual values");
-        //GenerateFields(module, type);
+        String baseTypeDName = ToDType(type.BaseType);
+        module.writer.WriteLine("    private {0} {1}; // .NET BasteType is actually {2}", baseTypeDName, EnumValueFieldName, type.BaseType);
+        module.writer.WriteLine("    enum : typeof(this)");
+        module.writer.WriteLine("    {");
+        UInt32 nonStaticFieldCount = 0;
+        foreach (FieldInfo field in type.GetFields())
+        {
+            Debug.Assert(field.DeclaringType == type);
+            Debug.Assert(field.FieldType == type);
+            if (!field.IsStatic)
+            {
+                Debug.Assert(field.Name == EnumValueFieldName);
+                nonStaticFieldCount++;
+                continue;
+            }
+            module.writer.WriteLine("        {0} = typeof(this)({1}({2})),", Util.ToDIdentifier(field.Name), baseTypeDName, field.GetRawConstantValue());
+        }
+        module.writer.WriteLine("    }");
+        Debug.Assert(nonStaticFieldCount == 1);
+
+        // Commenting out for now because of a conflict with TypeNameKind ToString
+        // It looks like C# might allow field names and method names to have the same symbol?
+        // I'll need to see in which cases C# allows this, maybe only with static fields?
+        // If so, the right solution would probably be to modify the field name that conflicts.
         //GenerateMethods(module, type);
+        /*
+        foreach (var method in type.GetMethods())
+        {
+            module.writer.WriteLine("    // TODO: generate something for enum method {0}", method);
+        }
+        */
+
+        // Generate opMethods so this behaves like an enum
+        module.writer.WriteLine("    typeof(this) opBinary(string op)(const typeof(this) right) const");
+        module.writer.WriteLine("    { return typeof(this)(mixin(\"this.value__ \" ~ op ~ \" right.value__\")); }");
+        // TODO: there's probably more (or less) to generate to get the behavior right
+
         module.writer.WriteLine("}");
     }
 
@@ -431,6 +466,10 @@ class Generator
         if (type == typeof(Double))  return "double";
         if (type == typeof(Decimal)) return "__d.clr.Decimal";
         if (type == typeof(Object))  return "__d.clr.DotNetObject";
+
+        // non primitive types
+        if (type == typeof(Enum)) return "__d.clrbridge.Enum"; // I think System.Enum is always 32 bits, verify this
+
         //String fromDll = (fieldType.Assembly == thisAssembly) ? "" :
         //    GetExtraAssemblyInfo(fieldType.Assembly).fromDllPrefix;
         return "__d.clr.DotNetObject";

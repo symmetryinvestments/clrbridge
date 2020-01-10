@@ -36,6 +36,13 @@ struct ArrayGeneric { mixin DotNetObjectMixin!"DotNetObject"; }
 struct ArrayBuilder(clr.PrimitiveType T) { mixin DotNetObjectMixin!"DotNetObject"; }
 struct ArrayBuilderGeneric { mixin DotNetObjectMixin!"DotNetObject"; }
 
+struct Enum
+{
+    uint value;
+    typeof(this) opBinary(string op)(const typeof(this) right) const
+    { return typeof(this)(mixin("this.value " ~ op ~ " right.value")); }
+}
+
 // Keep this in sync with the error codes in ClrBridge.cs
 enum ClrBridgeErrorCode : ubyte
 {
