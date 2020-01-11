@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Text;
 
 // TODO: maybe provide a way to configure assembly name to D package name map?
 //       if I provide any configuration options, they should probably be in a file
@@ -130,7 +131,7 @@ class Generator
                 if (type.IsEnum)
                 {
                     Debug.Assert(!type.IsGenericType, "enum types can be generic?");
-                    GenerateEnum(module, type);
+                    GenerateEnum(module, type, GenericTypeContext.None);
                 }
                 else
                 {
@@ -182,12 +183,15 @@ class Generator
         module.writer.WriteLine("// {0}", message);
     }
 
-    void GenerateEnum(DModule module, Type type)
+    void GenerateEnum(DModule module, Type type, GenericTypeContext genericTypeContext)
     {
         const String EnumValueFieldName = "value__";
         module.writer.WriteLine("/* .NET Enum */ struct {0}", Util.GetTypeName(type));
         module.writer.WriteLine("{");
-        String baseTypeDName = ToDType(type.BaseType);
+        Type[] genericArgs = type.GetGenericArguments();
+        Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
+        GenerateMetadata(module, type, genericArgs);
+        String baseTypeDName = ToDType(type.BaseType, genericTypeContext);
         module.writer.WriteLine("    private {0} {1}; // .NET BasteType is actually {2}", baseTypeDName, EnumValueFieldName, type.BaseType);
         module.writer.WriteLine("    enum : typeof(this)");
         module.writer.WriteLine("    {");
@@ -231,8 +235,10 @@ class Generator
     {
         module.writer.WriteLine("struct {0}", Util.GetTypeName(type));
         module.writer.WriteLine("{");
-        GenerateFields(module, type);
-        GenerateMethods(module, type);
+        Type[] genericArgs = type.GetGenericArguments();
+        GenerateMetadata(module, type, genericArgs);
+        GenerateFields(module, type, GenericTypeContext.None);
+        GenerateMethods(module, type, GenericTypeContext.None);
         module.writer.WriteLine("}");
     }
     void GenerateInterface(DModule module, Type type)
@@ -240,7 +246,8 @@ class Generator
         module.writer.WriteLine("interface {0}", Util.GetTypeName(type));
         module.writer.WriteLine("{");
         Debug.Assert(type.GetFields().Length == 0);
-        GenerateMethods(module, type);
+        //??? GenerateMetadata(module, type);
+        GenerateMethods(module, type, GenericTypeContext.None);
         module.writer.WriteLine("}");
     }
     void GenerateDelegate(DModule module, Type type)
@@ -253,17 +260,43 @@ class Generator
         {
             module.writer.WriteLine("// DeclaringType = {0}", Util.GetTypeName(type.DeclaringType));
         }
-        module.writer.WriteLine("// NOTE: not a struct, actually a .NET class!!!");
-        module.writer.WriteLine("struct {0}", Util.GetTypeName(type));
+        module.writer.Write("/* .NET class */ struct {0}", Util.GetTypeName(type));
+        Type[] genericArgs = type.GetGenericArguments();
+        GenerateGenericParameters(module, genericArgs);
+        module.writer.WriteLine();
         module.writer.WriteLine("{");
         module.writer.WriteLine("    // TODO: mixin the base class rather than DotNetObject");
         module.writer.WriteLine("    mixin __d.clrbridge.DotNetObjectMixin!\"__d.clr.DotNetObject\";");
-        GenerateFields(module, type);
-        GenerateMethods(module, type);
+        // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
+        // get the .NET name for this type
+        GenerateMetadata(module, type, genericArgs);
+        GenericTypeContext classGenericTypeContext = genericArgs.IsEmpty() ? GenericTypeContext.None :
+            new GenericTypeContext(null, genericArgs);
+        GenerateFields(module, type, classGenericTypeContext);
+        GenerateMethods(module, type, classGenericTypeContext);
         module.writer.WriteLine("}");
     }
 
-    void GenerateFields(DModule module, Type type)
+    void GenerateMetadata(DModule module, Type type, Type[] genericArgs)
+    {
+        module.writer.WriteLine("    static struct __metadata");
+        module.writer.WriteLine("    {");
+        module.writer.WriteLine("        enum assembly = \"{0}\";", type.Assembly.FullName);
+        module.writer.WriteLine("        enum typeName = \"{0}\";", type.FullName);
+        module.writer.Write("        enum genericArgs = __d.clr.AliasSeq!(");
+        {
+            String prefix = "";
+            foreach (Type genericArg in genericArgs)
+            {
+                module.writer.Write("{0}\"{1}\"", prefix, genericArg.Name);
+                prefix = ", ";
+            }
+        }
+        module.writer.WriteLine(");");
+        module.writer.WriteLine("    }");
+    }
+
+    void GenerateFields(DModule module, Type type, GenericTypeContext genericTypeContext)
     {
         foreach (FieldInfo field in type.GetFields())
         {
@@ -272,14 +305,14 @@ class Generator
                 GetExtraAssemblyInfo(fieldType.Assembly).fromDllPrefix;
             // fields are represented as D @property functions
             module.writer.WriteLine("    @property {0} {1}() {{ return typeof(return).init; }}; // fromPrefix '{2}' {3} {4}",
-                ToDType(fieldType),
+                ToDType(fieldType, genericTypeContext),
                 field.Name.ToDIdentifier(),
                 fromDll,
                 field.FieldType, field.FieldType.AssemblyQualifiedName);
         }
     }
 
-    void GenerateMethods(DModule module, Type type)
+    void GenerateMethods(DModule module, Type type, GenericTypeContext genericTypeContext)
     {
         foreach (ConstructorInfo constructor in type.GetConstructors())
         {
@@ -287,10 +320,11 @@ class Generator
                 continue; // script structs for now
             module.writer.Write("    {0} static typeof(this) New", constructor.IsPrivate ? "private" : "public");
             ParameterInfo[] parameters = constructor.GetParameters();
-            GenerateParameterList(module, parameters);
+            // TODO: if constructor has generic type arguments, create a new genericTypeContext here
+            GenerateParameterList(module, genericTypeContext, parameters);
             module.writer.WriteLine();
             module.writer.WriteLine("    {");
-            GenerateMethodBody(module, type, constructor, type, parameters);
+            GenerateMethodBody(module, type, genericTypeContext, constructor, type, parameters);
             module.writer.WriteLine("    }");
         }
         foreach (MethodInfo method in type.GetMethods())
@@ -310,18 +344,22 @@ class Generator
                 module.writer.Write(" final");
             }
 
+            Type[] genericArguments = method.GetGenericArguments();
+            GenericTypeContext methodGenericTypeContext = genericArguments.IsEmpty() ? genericTypeContext :
+                new GenericTypeContext(genericTypeContext, genericArguments);
+
             Debug.Assert(method.ReturnType != null);
             if (method.ReturnType == typeof(void))
                 module.writer.Write(" void");
             else
-                module.writer.Write(" {0}", ToDType(method.ReturnType));
+                module.writer.Write(" {0}", ToDType(method.ReturnType, methodGenericTypeContext));
             module.writer.Write(" {0}", Util.ToDIdentifier(method.Name));
             //
             // TODO: generate generic parameters
             //
             ParameterInfo[] parameters = method.GetParameters();
-            GenerateGenericParameters(module, method.GetGenericArguments());
-            GenerateParameterList(module, parameters);
+            GenerateGenericParameters(module, genericArguments);
+            GenerateParameterList(module, methodGenericTypeContext, parameters);
             if (method.IsVirtual)
             {
                 module.writer.WriteLine(";");
@@ -329,14 +367,14 @@ class Generator
             }
             module.writer.WriteLine();
             module.writer.WriteLine("    {");
-            GenerateMethodBody(module, type, method, method.ReturnType, parameters);
+            GenerateMethodBody(module, type, methodGenericTypeContext, method, method.ReturnType, parameters);
             module.writer.WriteLine("    }");
         }
     }
 
     void GenerateGenericParameters(DModule module, Type[] genericTypes)
     {
-        if (genericTypes != null)
+        if (genericTypes != null && genericTypes.Length > 0)
         {
             module.writer.Write("(");
             string prefix = "";
@@ -349,21 +387,22 @@ class Generator
         }
     }
 
-    void GenerateParameterList(DModule module, ParameterInfo[] parameters)
+    void GenerateParameterList(DModule module, GenericTypeContext genericTypeContext, ParameterInfo[] parameters)
     {
         module.writer.Write("(");
         {
             string prefix = "";
             foreach (ParameterInfo parameter in parameters)
             {
-                module.writer.Write("{0}{1} {2}", prefix, ToDType(parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
+                module.writer.Write("{0}{1} {2}", prefix, ToDType(parameter.ParameterType, genericTypeContext), Util.ToDIdentifier(parameter.Name));
                 prefix = ", ";
             }
         }
         module.writer.Write(")");
     }
 
-    void GenerateMethodBody(DModule module, Type type, MethodBase method, Type returnType, ParameterInfo[] parameters)
+    void GenerateMethodBody(DModule module, Type type, GenericTypeContext genericTypeContext,
+        MethodBase method, Type returnType, ParameterInfo[] parameters)
     {
         // skip non-static methods for now, they just take too long right now
         if (!method.IsStatic && !method.IsConstructor)
@@ -475,8 +514,17 @@ class Generator
     }
 
     // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?
-    string ToDType(Type type)
+    String ToDType(Type type, GenericTypeContext genericTypeContext)
     {
+        if (type.IsGenericParameter)
+        {
+            if (!genericTypeContext.Contains(type))
+                throw new Exception(String.Format(
+                    "type {0} has IsGenericParameter set to true but is not in the current GenericTypeContext ({1})",
+                    type, genericTypeContext.MakeString()));
+            return type.Name;
+        }
+
         Debug.Assert(type != typeof(void)); // not handled yet
         if (type == typeof(Boolean)) return "bool";
         if (type == typeof(Byte))    return "ubyte";
@@ -503,6 +551,9 @@ class Generator
     }
     static String TryGetBoxType(Type type)
     {
+        // TODO: Handle type.IsGenericParameter
+        //       will need to use D reflection to determine at D compile-time whether or not it's
+        //       a type that needs to be boxed
         Debug.Assert(type != typeof(void)); // not handled yet
         if (type == typeof(Boolean)) return "Boolean";
         if (type == typeof(Byte))    return "Byte";
@@ -602,10 +653,70 @@ static class Util
 
     public static void GenerateTypeGetter(StreamWriter writer, String linePrefix, Type type, String assemblyVarname, String typeVarname)
     {
-        writer.WriteLine("{0}const  {1} = __d.globalClrBridge.loadAssembly(__d.CStringLiteral!\"{2}\");", linePrefix, assemblyVarname, type.Assembly.FullName);
+        writer.Write("{0}const  {1} = __d.globalClrBridge.loadAssembly(__d.CStringLiteral!", linePrefix, assemblyVarname);
+        if (type.IsGenericParameter)
+            writer.Write("(__d.clrbridge.TemplateParamAssembly!({0}))", type.Name);
+        else
+            writer.Write("\"{0}\"", type.Assembly.FullName);
+        writer.WriteLine(");");
         writer.WriteLine("{0}scope (exit) __d.globalClrBridge.release({1});", linePrefix, assemblyVarname);
-        writer.WriteLine("{0}const  {1} = __d.globalClrBridge.getType({2}, __d.CStringLiteral!\"{3}\");", linePrefix, typeVarname, assemblyVarname, type.FullName);
+
+        writer.Write("{0}const  {1} = __d.globalClrBridge.getType({2}, __d.CStringLiteral!", linePrefix, typeVarname, assemblyVarname);
+        if (type.IsGenericParameter)
+            writer.Write("(__d.clrbridge.TemplateParamTypeName!({0}))", type.Name);
+        else
+            writer.Write("\"{0}\"", type.FullName);
+        writer.WriteLine(");");
         writer.WriteLine("{0}scope (exit) __d.globalClrBridge.release({1});", linePrefix, typeVarname);
+    }
+}
+
+class GenericTypeContext
+{
+    public static readonly GenericTypeContext None = new GenericTypeContext(null, null);
+
+    readonly GenericTypeContext parent;
+    readonly Type[] types;
+    private GenericTypeContext() { this.parent = null; this.types = null; }
+    public GenericTypeContext(GenericTypeContext parent, Type[] types)
+    {
+        Debug.Assert(types.Length > 0);
+        this.parent = parent;
+        this.types = types;
+    }
+    public bool Contains(Type type)
+    {
+        if (types != null)
+        {
+            foreach (Type genericType in types)
+            {
+                if (type == genericType)
+                    return true;
+            }
+            if (parent != null) return parent.Contains(type);
+        }
+        else Debug.Assert(parent == null);
+        return false;
+    }
+    public String MakeString()
+    {
+        StringBuilder sb = new StringBuilder();
+        String prefix = "";
+        MakeString(sb, ref prefix);
+        return sb.ToString();
+    }
+    public void MakeString(StringBuilder sb, ref String prefix)
+    {
+        if (types != null)
+        {
+            foreach (Type type in types)
+            {
+                sb.Append(prefix);
+                sb.Append(type.Name);
+                prefix = ", ";
+            }
+            if (parent != null) parent.MakeString(sb, ref prefix);
+        } else Debug.Assert(parent == null);
     }
 }
 
@@ -615,4 +726,5 @@ static class Extensions
     {
        return (s == null) ? "" : s;
     }
+    public static Boolean IsEmpty<T>(this T[] array) { return array == null || array.Length == 0; }
 }

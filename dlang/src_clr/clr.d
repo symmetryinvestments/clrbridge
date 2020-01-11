@@ -1,6 +1,15 @@
 // Data structures that represent the .NET CLR
 module clr;
 
+version (NoPhobos)
+{
+    alias AliasSeq(T...) = T;
+}
+else
+{
+    public import std.meta : AliasSeq;
+}
+
 enum PrimitiveType
 {
     Boolean,
@@ -67,6 +76,15 @@ template Info(PrimitiveType T)
 
 struct DotNetObject
 {
+    static struct __clrmetadata
+    {
+        enum assembly = "mscorlib"; // todo: full name? Maybe not necessary for mscorlib since you
+                                    //       can't have 2 loaded at the same time? but maybe you could
+                                    //       have another library with the name mscorlib?
+        enum typeName = "System.Object";
+        enum genericArgs = AliasSeq!();
+    }
+
     private void* _ptr;
     void* ptr() const { return cast(void*)_ptr; }
     static DotNetObject nullObject() { return typeof(this)(null); }

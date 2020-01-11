@@ -420,6 +420,24 @@ immutable(wchar)* mallocWchar(const(char)[] s) @nogc
     return cast(immutable(wchar)*)ws;
 }
 
+template TemplateParamAssembly(T)
+{
+    static if (is(T.__clrmetadata))
+    {
+        enum TemplateParamAssembly = T.__clrmetadata.assembly;
+    }
+    else static assert(0, "TemplateParamAssembly of type " ~ typeid(T).toString() ~ " not implemented");
+}
+template TemplateParamTypeName(T)
+{
+    static if (is(T.__clrmetadata))
+    {
+        // TODO: handle generic params?
+        enum TemplateParamTypeName = T.__clrmetadata.typeName;
+    }
+    else static assert(0, "TemplateParamTypeName of type " ~ typeid(T).toString() ~ " not implemented");
+}
+
 /**
 Reference a type from another .NET assembly
 */
