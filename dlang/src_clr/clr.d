@@ -73,16 +73,18 @@ template Info(PrimitiveType T)
     enum Info = primitiveTypes[T];
 }
 
+struct TypeSpec
+{
+    string assemblyString;
+    string typeName;
+    TypeSpec[] genericTypes;
+}
 
 struct DotNetObject
 {
     static struct __clrmetadata
     {
-        enum assembly = "mscorlib"; // todo: full name? Maybe not necessary for mscorlib since you
-                                    //       can't have 2 loaded at the same time? but maybe you could
-                                    //       have another library with the name mscorlib?
-        enum typeName = "System.Object";
-        enum genericArgs = AliasSeq!();
+        enum typeSpec = TypeSpec("mscorlib", "System.Object", null);
     }
 
     private void* _ptr;
@@ -92,6 +94,11 @@ struct DotNetObject
 }
 struct Decimal
 {
+    static struct __clrmetadata
+    {
+        enum typeSpec = TypeSpec("mscorlib", "System.Decimal", null);
+    }
+
   align(1):
     uint flags;
     uint hi;

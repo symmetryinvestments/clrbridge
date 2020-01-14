@@ -279,20 +279,24 @@ class Generator
 
     void GenerateMetadata(DModule module, Type type, Type[] genericArgs)
     {
-        module.writer.WriteLine("    static struct __metadata");
+        module.writer.WriteLine("    static struct __clrmetadata");
         module.writer.WriteLine("    {");
-        module.writer.WriteLine("        enum assembly = \"{0}\";", type.Assembly.FullName);
-        module.writer.WriteLine("        enum typeName = \"{0}\";", type.FullName);
-        module.writer.Write("        enum genericArgs = __d.clr.AliasSeq!(");
+        module.writer.WriteLine("        enum typeSpec = __d.clr.TypeSpec(");
+        module.writer.WriteLine("            \"{0}\", // assembly name", type.Assembly.FullName);
+        module.writer.WriteLine("            \"{0}\", // type name", type.FullName);
+        if (genericArgs.Length == 0)
         {
-            String prefix = "";
+            module.writer.WriteLine("            null);");
+        }
+        else
+        {
+            module.writer.WriteLine("            [");
             foreach (Type genericArg in genericArgs)
             {
-                module.writer.Write("{0}\"{1}\"", prefix, genericArg.Name);
-                prefix = ", ";
+                module.writer.WriteLine("                __d.clrbridge.GetTypeSpec!{0},", genericArg.Name);
             }
+            module.writer.WriteLine("        ]);");
         }
-        module.writer.WriteLine(");");
         module.writer.WriteLine("    }");
     }
 
@@ -414,9 +418,11 @@ class Generator
         String methodTypeString = method.IsConstructor ? "Constructor" : "Method";
 
         // TODO: we may want to cache some of this stuff, but for now we'll just get it
+        module.writer.WriteLine("        // TODO: enum __method_spec__ = __d.clrbridge.MethodSpec(...)");
 
         // Get Assembly so we can get Type then Method (TODO: cache this somehow?)
-        Util.GenerateTypeGetter(module.writer, "        ", type, "__this_assembly__", "__this_type__");
+        module.writer.WriteLine("        auto  __this_type__ = __d.globalClrBridge.getClosedType!(__clrmetadata.typeSpec);");
+        module.writer.WriteLine("        scope (exit) __this_type__.release(__d.globalClrBridge);");
         module.writer.WriteLine("        auto  __method__ = __d.clrbridge.{0}Info.nullObject;", methodTypeString);
         module.writer.WriteLine("        scope (exit) { if (!__method__.isNull) __d.globalClrBridge.release(__method__); }");
 
@@ -431,18 +437,18 @@ class Generator
             uint paramIndex = 0;
             foreach (ParameterInfo parameter in parameters)
             {
-                Util.GenerateTypeGetter(module.writer, "            ", parameter.ParameterType,
-                    String.Format("__param{0}_assembly__", paramIndex),
-                    String.Format("__param{0}_type__", paramIndex));
+                module.writer.WriteLine("            auto  __param{0}_type__ = __d.globalClrBridge.getClosedType!({1});",
+                    paramIndex, TypeSpecRef(parameter.ParameterType, genericTypeContext));
+                module.writer.WriteLine("            scope (exit) __param{0}_type__.release(__d.globalClrBridge);", paramIndex);
                 paramIndex++;
             }
-            module.writer.WriteLine("            __method__ = __d.globalClrBridge.get{0}(__this_type__,", methodTypeString);
+            module.writer.WriteLine("            __method__ = __d.globalClrBridge.get{0}(__this_type__.type,", methodTypeString);
             if (!method.IsConstructor)
                 module.writer.WriteLine("                __d.CStringLiteral!\"{0}\",", method.Name);
             module.writer.WriteLine("                __d.globalClrBridge.makeGenericArray(__d.globalClrBridge.typeType");
             for (uint i = 0; i < parameters.Length; i++)
             {
-                module.writer.WriteLine("                , __param{0}_type__", i);
+                module.writer.WriteLine("                , __param{0}_type__.type", i);
             }
             module.writer.WriteLine("                ));");
         }
@@ -511,6 +517,11 @@ class Generator
 
         if (returnType != typeof(void))
             module.writer.WriteLine("        return __return_value__;");
+    }
+
+    public String TypeSpecRef(Type type, GenericTypeContext genericTypeContext)
+    {
+        return String.Format("__d.clrbridge.GetTypeSpec!({0})", ToDType(type, genericTypeContext));
     }
 
     // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?
@@ -649,25 +660,6 @@ static class Util
             .Replace(">", "_")
             .Replace("=", "_")
             .Replace("`", "_");
-    }
-
-    public static void GenerateTypeGetter(StreamWriter writer, String linePrefix, Type type, String assemblyVarname, String typeVarname)
-    {
-        writer.Write("{0}const  {1} = __d.globalClrBridge.loadAssembly(__d.CStringLiteral!", linePrefix, assemblyVarname);
-        if (type.IsGenericParameter)
-            writer.Write("(__d.clrbridge.TemplateParamAssembly!({0}))", type.Name);
-        else
-            writer.Write("\"{0}\"", type.Assembly.FullName);
-        writer.WriteLine(");");
-        writer.WriteLine("{0}scope (exit) __d.globalClrBridge.release({1});", linePrefix, assemblyVarname);
-
-        writer.Write("{0}const  {1} = __d.globalClrBridge.getType({2}, __d.CStringLiteral!", linePrefix, typeVarname, assemblyVarname);
-        if (type.IsGenericParameter)
-            writer.Write("(__d.clrbridge.TemplateParamTypeName!({0}))", type.Name);
-        else
-            writer.Write("\"{0}\"", type.FullName);
-        writer.WriteLine(");");
-        writer.WriteLine("{0}scope (exit) __d.globalClrBridge.release({1});", linePrefix, typeVarname);
     }
 }
 

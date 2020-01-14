@@ -103,6 +103,14 @@ int main()
         scope(exit) globalClrBridge.release(args);
         globalClrBridge.funcs.CallGeneric(consoleWriteLine, clr.DotNetObject.nullObject, args, null);
     }
+    {
+        const consoleType3 = globalClrBridge.getClosedType!(clr.TypeSpec("mscorlib", "System.Console"));
+        const listType = globalClrBridge.getClosedType!(clr.TypeSpec("mscorlib", "System.Collections.Generic.List`1"));
+        const listType2 = globalClrBridge.getClosedType!(
+            clr.TypeSpec("mscorlib", "System.Collections.Generic.List`1",[
+                 clr.TypeSpec("mscorlib", "System.String"),
+            ]));
+    }
 
     writeln("success");
     return 0;

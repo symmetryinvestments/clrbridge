@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -44,6 +45,19 @@ public static partial class ClrBridge
         if (type == null)
             return ResultCode.ErrorTypeNotFound;
         outType = GCHandle.ToIntPtr(GCHandle.Alloc(type));
+        return ResultCode.Success;
+    }
+
+    // Take an "open" generic type (has unresolved type parameters), and resolve it to a "closed" type using the give array of types
+    public static UInt32 ResolveGenericType(IntPtr typePtr, IntPtr typesArrayPtr, ref IntPtr outType)
+    {
+        Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
+        Type[] types = null;
+        if (typesArrayPtr != IntPtr.Zero)
+            types = (Type[])GCHandle.FromIntPtr(typesArrayPtr).Target;
+        Type closedType = type.MakeGenericType(types);
+        Debug.Assert(closedType != null, "did not expect MakeGenericType to return null");
+        outType = GCHandle.ToIntPtr(GCHandle.Alloc(closedType));
         return ResultCode.Success;
     }
 

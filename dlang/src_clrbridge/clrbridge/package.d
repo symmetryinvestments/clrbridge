@@ -8,7 +8,7 @@ import hresult;
 import core.stdc.stdlib : malloc, free;
 
 static import clr;
-import clr : DotNetObject, Decimal;
+import clr : DotNetObject, Decimal, TypeSpec;
 
 mixin template DotnetPrimitiveWrappers(string funcName)
 {
@@ -151,6 +151,7 @@ struct ClrBridge
         extern(C) void function(const DotNetObject obj) nothrow @nogc Release;
         extern(C) uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
         extern(C) uint function(const Assembly assembly, CString name, Type* outType) nothrow @nogc GetType;
+        extern(C) uint function(const Type type, const ArrayGeneric types, Type* outType) nothrow @nogc ResolveGenericType;
         extern(C) uint function(const Type type, const ArrayGeneric paramTypes, ConstructorInfo* outConstructor) nothrow @nogc GetConstructor;
         extern(C) uint function(const Type type, CString name, const ArrayGeneric paramTypes, MethodInfo* outMethod) nothrow @nogc GetMethod;
         extern(C) uint function(const ConstructorInfo constructor, const Array!(clr.PrimitiveType.Object) args, DotNetObject* outObjectPtr) nothrow @nogc CallConstructor;
@@ -185,7 +186,7 @@ struct ClrBridge
 
     void debugWriteObject(const DotNetObject obj) { funcs.DebugWriteObject(obj); }
 
-    void release(const DotNetObject obj) nothrow @nogc
+    void release(const DotNetObject obj) const nothrow @nogc
     {
         funcs.Release(obj);
     }
@@ -240,6 +241,23 @@ struct ClrBridge
         if (result.failed)
             throw new Exception(format("failed to get type '%s': %s", name, result));
         return type;
+    }
+
+    ClrBridgeError tryResolveGenericType(const Type type, const ArrayGeneric types, Type* outType) nothrow @nogc
+    {
+        const errorCode = funcs.ResolveGenericType(type, types, outType);
+        if (errorCode != 0)
+            return ClrBridgeError.forward(errorCode);
+        return ClrBridgeError.none;
+    }
+    Type resolveGenericType(const Type type, const ArrayGeneric types)
+    {
+        import std.format : format;
+        Type closedType;
+        const result = tryResolveGenericType(type, types, &closedType);
+        if (result.failed)
+            throw new Exception(format("failed to resolve generic type: %s", result));
+        return closedType;
     }
 
     ClrBridgeError tryGetConstructor(const Type type, const ArrayGeneric paramTypes, ConstructorInfo* outConstructor) nothrow @nogc
@@ -401,6 +419,112 @@ struct ClrBridge
             throw new Exception(format("makeArray failed: %s", result));
         return cast(Array!(clr.PrimitiveType.Object))array;
     }
+
+    //
+    // Higher Level API
+    //
+    ArrayGeneric getTypesArray(TypeSpec[] types)()
+    {
+        static if (types.length == 0)
+        {
+            return ArrayGeneric.nullObject;
+        }
+        else
+        {
+            const builder = arrayBuilderNewGeneric(typeType, types.length);
+            scope (exit) release(builder);
+            ClosedTypeResult[types.length] genericTypes;
+            static foreach (i, genericTypeSpec; types)
+            {
+                genericTypes[i] = getClosedType!genericTypeSpec;
+                arrayBuilderAddGeneric(builder, genericTypes[i].type);
+                scope (exit) genericTypes[i].release(this);
+            }
+            return arrayBuilderFinishGeneric(builder);
+        }
+    }
+    ClosedTypeResult getClosedType(TypeSpec typeSpec)()
+    {
+        static if (IsMscorlib!(typeSpec.assemblyString))
+        {
+            static foreach (primitiveType; clr.primitiveTypes)
+            {
+                static if (typeSpec.typeName == primitiveType.fullName)
+                    return ClosedTypeResult(__traits(getMember, primitiveTypes, primitiveType.name), false);
+            }
+            return getClosedType!typeSpec(mscorlib);
+        }
+        else
+        {
+            auto assembly = loadAssembly(CStringLiteral!(typeSpec.assemblyString));
+            scope (exit) release(assembly);
+            return getClosedType!typeSpec(assembly);
+        }
+    }
+    ClosedTypeResult getClosedType(TypeSpec typeSpec)(const Assembly assembly)
+    {
+        // should I also handle primitive types in this function?
+        static if (typeSpec.genericTypes.length > 0)
+        {
+            const genericTypesArray = getTypesArray!(typeSpec.genericTypes)();
+            scope (exit) release(genericTypesArray);
+        }
+        Type unresolvedType = getType(assembly, CStringLiteral!(typeSpec.typeName));
+        static if (typeSpec.genericTypes.length == 0)
+            return ClosedTypeResult(unresolvedType, true);
+        else
+            return ClosedTypeResult(resolveGenericType(unresolvedType, genericTypesArray), true);
+    }
+    MethodInfo getClosedMethod(MethodSpec methodSpec)()
+    {
+        const type = getClosedType!(methodSpec.typeSpec)();
+        scope (exit) release(type); // todo: don't release primtive types
+        return getClosedMethod!methodSpec(type);
+    }
+    MethodInfo getClosedMethod(MethodSpec methodSpec)(const Type type)
+    {
+        static if (methodSpec.genericTypes.length > 0)
+        {
+            const genericTypesArray = getTypesArray!(methodSpec.genericTypes)();
+            scope (exit) release(genericTypesArray);
+        }
+        Type unresolvedMethod = getMethod(assembly, CStringLiteral!(methodSpec.methodName));
+        static if (methodSpec.genericTypes.length == 0)
+            return unresolvedMethod;
+        else
+            return resolveGenericMethod(unresolvedMethod, genericTypesArray);
+    }
+}
+
+/// Result of getClosedtype, abstracts whether or not it should be released
+struct ClosedTypeResult
+{
+    Type type;
+    bool canRelease;
+    void release(const ref ClrBridge bridge)
+    {
+        if (canRelease)
+        {
+            bridge.release(type);
+            canRelease = false;
+        }
+    }
+}
+
+template IsMscorlib(string assemblyString)
+{
+    static if (assemblyString == "mscorlib" ||
+        (assemblyString.length >= 9 && assemblyString[0..9] == "mscorlib,"))
+        enum IsMscorlib = true;
+    else
+        enum IsMscorlib = false;
+}
+
+struct MethodSpec
+{
+    TypeSpec typeSpec;
+    string methodName;
+    TypeSpec[] genericTypes;
 }
 
 void castArrayCopy(T, U)(T* dst, U[] src)
@@ -420,22 +544,25 @@ immutable(wchar)* mallocWchar(const(char)[] s) @nogc
     return cast(immutable(wchar)*)ws;
 }
 
-template TemplateParamAssembly(T)
+template GetTypeSpec(T)
 {
-    static if (is(T.__clrmetadata))
-    {
-        enum TemplateParamAssembly = T.__clrmetadata.assembly;
-    }
-    else static assert(0, "TemplateParamAssembly of type " ~ typeid(T).toString() ~ " not implemented");
-}
-template TemplateParamTypeName(T)
-{
-    static if (is(T.__clrmetadata))
-    {
-        // TODO: handle generic params?
-        enum TemplateParamTypeName = T.__clrmetadata.typeName;
-    }
-    else static assert(0, "TemplateParamTypeName of type " ~ typeid(T).toString() ~ " not implemented");
+    static if (is(T.__clrmetadata))        enum GetTypeSpec = T.__clrmetadata.typeSpec;
+    else static if (is(T == bool))          enum GetTypeSpec = TypeSpec("mscorlib", "System.Boolean");
+    else static if (is(T == ubyte))        enum GetTypeSpec = TypeSpec("mscorlib", "System.Byte");
+    else static if (is(T == byte))         enum GetTypeSpec = TypeSpec("mscorlib", "System.SByte");
+    else static if (is(T == ushort))       enum GetTypeSpec = TypeSpec("mscorlib", "System.UInt16");
+    else static if (is(T == short))        enum GetTypeSpec = TypeSpec("mscorlib", "System.Int16");
+    else static if (is(T == uint))         enum GetTypeSpec = TypeSpec("mscorlib", "System.UInt32");
+    else static if (is(T == int))          enum GetTypeSpec = TypeSpec("mscorlib", "System.Int32");
+    else static if (is(T == ulong))        enum GetTypeSpec = TypeSpec("mscorlib", "System.UInt64");
+    else static if (is(T == long))         enum GetTypeSpec = TypeSpec("mscorlib", "System.Int64");
+    else static if (is(T == char))         enum GetTypeSpec = TypeSpec("mscorlib", "System.Char");
+    else static if (is(T == CString))      enum GetTypeSpec = TypeSpec("mscorlib", "System.String");
+    else static if (is(T == float))        enum GetTypeSpec = TypeSpec("mscorlib", "System.Single");
+    else static if (is(T == double))       enum GetTypeSpec = TypeSpec("mscorlib", "System.Double");
+    else static if (is(T == Decimal))      enum GetTypeSpec = TypeSpec("mscorlib", "System.Decimal");
+    else static if (is(T == DotNetObject)) enum GetTypeSpec = TypeSpec("mscorlib", "System.Object");
+    else static assert(0, "GetTypespec of type " ~ typeid(T).toString() ~ " not implemented");
 }
 
 /**

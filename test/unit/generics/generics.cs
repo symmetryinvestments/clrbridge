@@ -1,14 +1,19 @@
+using System;
 
 public static class GenericMethods
 {
-    public static void NoOpOneGeneric<T>(T value) { }
+    public static void NoOpOneGeneric<T>() { }
     public static T ReturnOneGeneric<T>(T value) { return value; }
 }
 
-public class ClassOneGeneric<T>
+public static class ClassOneGeneric<T>
 {
-    public T value;
-    public T Value { get { return value; } }
+    public static void DumpTypeToConsole()
+    {
+        Console.WriteLine("ClassOneGeneric {0}", typeof(T));
+    }
+    //public T value;
+    //public T Value { get { return value; } }
 }
 
 public class CassLevel0Generic<T>
