@@ -19,6 +19,8 @@ void test()
     ClassOneGeneric_1!double.DumpTypeToConsole();
     ClassOneGeneric_1!Decimal.DumpTypeToConsole();
     ClassOneGeneric_1!DotNetObject.DumpTypeToConsole();
+
+    //assert(false == ClassOneGeneric_1!bool.Passthrough(false));
     {
         //const ClassOneGeneric_1!uint.New();
     }

@@ -116,7 +116,9 @@ public static partial class ClrBridge
         Object obj = null;
         if (objPtr != IntPtr.Zero)
             obj = GCHandle.FromIntPtr(objPtr).Target;
-        Object[] args = (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target;
+        Object[] args = null;
+        if (argsArrayPtr != IntPtr.Zero)
+            args = (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target;
         MarshalReturnValue(method.ReturnType, method.Invoke(obj, args), returnValuePtr);
     }
 

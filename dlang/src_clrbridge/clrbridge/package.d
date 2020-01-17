@@ -425,23 +425,16 @@ struct ClrBridge
     //
     ArrayGeneric getTypesArray(TypeSpec[] types)()
     {
-        static if (types.length == 0)
+        const builder = arrayBuilderNewGeneric(typeType, types.length);
+        scope (exit) release(builder);
+        ClosedTypeResult[types.length] genericTypes;
+        static foreach (i, genericTypeSpec; types)
         {
-            return ArrayGeneric.nullObject;
+            genericTypes[i] = getClosedType!genericTypeSpec;
+            arrayBuilderAddGeneric(builder, genericTypes[i].type);
+            scope (exit) genericTypes[i].release(this);
         }
-        else
-        {
-            const builder = arrayBuilderNewGeneric(typeType, types.length);
-            scope (exit) release(builder);
-            ClosedTypeResult[types.length] genericTypes;
-            static foreach (i, genericTypeSpec; types)
-            {
-                genericTypes[i] = getClosedType!genericTypeSpec;
-                arrayBuilderAddGeneric(builder, genericTypes[i].type);
-                scope (exit) genericTypes[i].release(this);
-            }
-            return arrayBuilderFinishGeneric(builder);
-        }
+        return arrayBuilderFinishGeneric(builder);
     }
     ClosedTypeResult getClosedType(TypeSpec typeSpec)()
     {
@@ -525,6 +518,7 @@ struct MethodSpec
     TypeSpec typeSpec;
     string methodName;
     TypeSpec[] genericTypes;
+    TypeSpec[] paramTypes;
 }
 
 void castArrayCopy(T, U)(T* dst, U[] src)
@@ -560,9 +554,7 @@ template GetTypeSpec(T)
     else static if (is(T == CString))      enum GetTypeSpec = TypeSpec("mscorlib", "System.String");
     else static if (is(T == float))        enum GetTypeSpec = TypeSpec("mscorlib", "System.Single");
     else static if (is(T == double))       enum GetTypeSpec = TypeSpec("mscorlib", "System.Double");
-    else static if (is(T == Decimal))      enum GetTypeSpec = TypeSpec("mscorlib", "System.Decimal");
-    else static if (is(T == DotNetObject)) enum GetTypeSpec = TypeSpec("mscorlib", "System.Object");
-    else static assert(0, "GetTypespec of type " ~ typeid(T).toString() ~ " not implemented");
+    else static assert(0, "GetTypespec of type " ~ T.stringof ~ " not implemented");
 }
 
 /**
