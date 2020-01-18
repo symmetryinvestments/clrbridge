@@ -1,28 +1,24 @@
 import cstring;
-import clr : DotNetObject, Decimal;
+import clr : DotNetObject, Decimal, primitiveTypes, DlangType;
 import generics;
 
 void test()
 {
-    ClassOneGeneric_1!bool.DumpTypeToConsole();
-    ClassOneGeneric_1!ubyte.DumpTypeToConsole();
-    ClassOneGeneric_1!byte.DumpTypeToConsole();
-    ClassOneGeneric_1!ushort.DumpTypeToConsole();
-    ClassOneGeneric_1!short.DumpTypeToConsole();
-    ClassOneGeneric_1!uint.DumpTypeToConsole();
-    ClassOneGeneric_1!int.DumpTypeToConsole();
-    ClassOneGeneric_1!ulong.DumpTypeToConsole();
-    ClassOneGeneric_1!long.DumpTypeToConsole();
-    ClassOneGeneric_1!char.DumpTypeToConsole();
-    ClassOneGeneric_1!CString.DumpTypeToConsole();
-    ClassOneGeneric_1!float.DumpTypeToConsole();
-    ClassOneGeneric_1!double.DumpTypeToConsole();
-    ClassOneGeneric_1!Decimal.DumpTypeToConsole();
-    ClassOneGeneric_1!DotNetObject.DumpTypeToConsole();
+    static foreach (primitiveType; primitiveTypes)
+    {{
+        alias C = ClassOneGeneric_1!(DlangType!(primitiveType.type));
+        C.DumpTypeToConsole();
+        static foreach (primitiveType2; primitiveTypes)
+        {
+            // TODO: since we are defining the type inside the other type, we don't
+            // need to incldue both template types
+            //C.SubGeneric_1!(DlangType!(primitiveType2.type)).DumpTypesToConsole();
+        }
+    }}
 
     //assert(false == ClassOneGeneric_1!bool.Passthrough(false));
     {
-        //const ClassOneGeneric_1!uint.New();
+        //const c0 = ClassLevel0Generic!uint.New();
     }
     //GenericMethods.NoOpOneGeneric!DotNetObject();
     //GenericMethods.NoOpOneGeneric!DotNetObject(DotNetObject.nullObject);

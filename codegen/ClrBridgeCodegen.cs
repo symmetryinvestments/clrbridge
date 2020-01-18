@@ -50,6 +50,7 @@ class Generator
     readonly Assembly thisAssembly;
     readonly String outputDir;
     readonly Dictionary<Assembly, ExtraAssemblyInfo> assemblyInfoMap;
+    readonly Dictionary<Type, ExtraTypeInfo> typeInfoMap;
     readonly Dictionary<String,DModule> moduleMap;
     readonly String thisAssemblyPackageName; // cached version of GetExtraAssemblyInfo(thisAssembly).packageName
     // bool lowercaseModules;
@@ -59,6 +60,7 @@ class Generator
         this.thisAssembly = thisAssembly;
         this.outputDir = outputDir;
         this.assemblyInfoMap = new Dictionary<Assembly,ExtraAssemblyInfo>();
+        this.typeInfoMap = new Dictionary<Type,ExtraTypeInfo>();
         this.moduleMap = new Dictionary<String,DModule>();
         this.thisAssemblyPackageName = GetExtraAssemblyInfo(thisAssembly).packageName;
     }
@@ -75,10 +77,32 @@ class Generator
         }
         return info;
     }
+    ExtraTypeInfo GetExtraTypeInfo(Type type)
+    {
+        ExtraTypeInfo info;
+        if (!typeInfoMap.TryGetValue(type, out info))
+        {
+            info = new ExtraTypeInfo();
+            typeInfoMap[type] = info;
+        }
+        return info;
+    }
 
     public void GenerateModule(Assembly assembly)
     {
-        foreach (Type type in assembly.GetTypes())
+        // on the first pass we identify types that need to be defined inside other types
+        // so that when we generate code, we can generate all the subtypes for each type
+        Type[] allTypes = assembly.GetTypes();
+        List<Type> rootTypes = new List<Type>();
+        foreach (Type type in allTypes)
+        {
+            if (type.DeclaringType != null)
+                GetExtraTypeInfo(type.DeclaringType).subTypes.Add(type);
+            else
+                rootTypes.Add(type);
+        }
+
+        foreach (Type type in rootTypes)
         {
             //writer.WriteLine("type {0}", type);
 
@@ -109,70 +133,59 @@ class Generator
                 writer.WriteLine("}");
                 moduleMap.Add(type.Namespace.NullToEmpty(), module);
             }
-
-/*
-            const String InvalidChars = "<=`";
-            bool foundInvalidChar = false;
-            foreach (Char invalidChar in InvalidChars)
-            {
-                if (type.Name.Contains(invalidChar))
-                {
-                    Message(module, "skipping type {0} because it contains '{1}'", type.Name, invalidChar);
-                    foundInvalidChar = true;
-                    break;
-                }
-            }
-            if (foundInvalidChar)
-                continue;
-*/
-
-            if (type.IsValueType)
-            {
-                if (type.IsEnum)
-                {
-                    Debug.Assert(!type.IsGenericType, "enum types can be generic?");
-                    GenerateEnum(module, type);
-                }
-                else
-                {
-                    if (type.IsGenericType)
-                    {
-                        Message(module, "skipping type {0} because generics structs aren't implemented", type.Name);
-                        continue;
-                    }
-                    GenerateStruct(module, type);
-                }
-            }
-            else if (type.IsInterface)
-            {
-                if (type.IsGenericType)
-                {
-                    Message(module, "skipping type {0} because generics interfaces aren't implemented", type.Name);
-                    continue;
-                }
-                GenerateInterface(module, type);
-            }
-            else
-            {
-                Debug.Assert(type.IsClass);
-                if (typeof(Delegate).IsAssignableFrom(type))
-                {
-                    if (type.IsGenericType)
-                    {
-                        Message(module, "skipping type {0} because generics delegates aren't implemented", type.Name);
-                        continue;
-                    }
-                    GenerateDelegate(module, type);
-                }
-                else
-                {
-                    GenerateClass(module, type);
-                }
-            }
+            GenerateType(module, type, 0);
         }
         foreach (DModule module in moduleMap.Values)
         {
             module.writer.Close();
+        }
+    }
+
+    // TODO: depth should affect the tab depth
+    void GenerateType(DModule module, Type type, UInt16 depth)
+    {
+        if (type.IsValueType)
+        {
+            if (type.IsEnum)
+            {
+                Debug.Assert(!type.IsGenericType, "enum types can be generic?");
+                GenerateEnum(module, type);
+            }
+            else
+            {
+                if (type.IsGenericType)
+                {
+                    Message(module, "skipping type {0} because generics structs aren't implemented", type.Name);
+                    return;
+                }
+                GenerateStruct(module, type, depth);
+            }
+        }
+        else if (type.IsInterface)
+        {
+            if (type.IsGenericType)
+            {
+                Message(module, "skipping type {0} because generics interfaces aren't implemented", type.Name);
+                return;
+            }
+            GenerateInterface(module, type, depth);
+        }
+        else
+        {
+            Debug.Assert(type.IsClass);
+            if (typeof(Delegate).IsAssignableFrom(type))
+            {
+                if (type.IsGenericType)
+                {
+                    Message(module, "skipping type {0} because generics delegates aren't implemented", type.Name);
+                    return;
+                }
+                GenerateDelegate(module, type);
+            }
+            else
+            {
+                GenerateClass(module, type, depth);
+            }
         }
     }
 
@@ -186,7 +199,7 @@ class Generator
     void GenerateEnum(DModule module, Type type)
     {
         const String EnumValueFieldName = "value__";
-        module.writer.WriteLine("/* .NET Enum */ struct {0}", Util.GetTypeName(type));
+        module.writer.WriteLine("/* .NET Enum */ static struct {0}", Util.GetUnqualifiedTypeName(type));
         module.writer.WriteLine("{");
         Type[] genericArgs = type.GetGenericArguments();
         Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
@@ -231,36 +244,34 @@ class Generator
         module.writer.WriteLine("}");
     }
 
-    void GenerateStruct(DModule module, Type type)
+    void GenerateStruct(DModule module, Type type, UInt16 depth)
     {
-        module.writer.WriteLine("struct {0}", Util.GetTypeName(type));
+        module.writer.WriteLine("static struct {0}", Util.GetUnqualifiedTypeName(type));
         module.writer.WriteLine("{");
         Type[] genericArgs = type.GetGenericArguments();
         GenerateMetadata(module, type, genericArgs);
         GenerateFields(module, type);
         GenerateMethods(module, type);
+        GenerateSubTypes(module, type, depth);
         module.writer.WriteLine("}");
     }
-    void GenerateInterface(DModule module, Type type)
+    void GenerateInterface(DModule module, Type type, UInt16 depth)
     {
-        module.writer.WriteLine("interface {0}", Util.GetTypeName(type));
+        module.writer.WriteLine("interface {0}", Util.GetUnqualifiedTypeName(type));
         module.writer.WriteLine("{");
         Debug.Assert(type.GetFields().Length == 0);
         //??? GenerateMetadata(module, type);
         GenerateMethods(module, type);
+        GenerateSubTypes(module, type, depth);
         module.writer.WriteLine("}");
     }
     void GenerateDelegate(DModule module, Type type)
     {
-        module.writer.WriteLine("// TODO: generate delegate '{0}'", Util.GetTypeName(type));
+        module.writer.WriteLine("// TODO: generate delegate '{0}'", Util.GetUnqualifiedTypeName(type));
     }
-    void GenerateClass(DModule module, Type type)
+    void GenerateClass(DModule module, Type type, UInt16 depth)
     {
-        if (type.DeclaringType != null)
-        {
-            module.writer.WriteLine("// DeclaringType = {0}", Util.GetTypeName(type.DeclaringType));
-        }
-        module.writer.Write("/* .NET class */ struct {0}", Util.GetTypeName(type));
+        module.writer.Write("/* .NET class */ static struct {0}", Util.GetUnqualifiedTypeName(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(module, genericArgs);
         module.writer.WriteLine();
@@ -272,6 +283,7 @@ class Generator
         GenerateMetadata(module, type, genericArgs);
         GenerateFields(module, type);
         GenerateMethods(module, type);
+        GenerateSubTypes(module, type, depth);
         module.writer.WriteLine("}");
     }
 
@@ -500,7 +512,7 @@ class Generator
                     if (boxType != null)
                     {
                         module.writer.WriteLine("        auto  __param{0}__ = __d.globalClrBridge.box!(__d.clr.PrimitiveType.{1})({2}); // actual type is {3}",
-                            paramIndex, boxType, Util.ToDIdentifier(parameter.Name), Util.GetTypeName(parameter.ParameterType));
+                            paramIndex, boxType, Util.ToDIdentifier(parameter.Name), Util.GetQualifiedTypeName(parameter.ParameterType));
                         module.writer.WriteLine("        scope (exit) __d.globalClrBridge.release(__param{0}__);", paramIndex);
                     }
                 }
@@ -550,6 +562,18 @@ class Generator
 
         if (returnType != typeof(void))
             module.writer.WriteLine("        return __return_value__;");
+    }
+
+    void GenerateSubTypes(DModule module, Type type, UInt16 depth)
+    {
+        ExtraTypeInfo typeInfo;
+        if (!typeInfoMap.TryGetValue(type, out typeInfo))
+            return;
+        depth++;
+        foreach (Type subType in typeInfo.subTypes)
+        {
+            GenerateType(module, subType, depth);
+        }
     }
 
     public String TypeSpecRef(Type type)
@@ -634,6 +658,15 @@ class ExtraAssemblyInfo
     }
 }
 
+class ExtraTypeInfo
+{
+    public readonly List<Type> subTypes; // types that are declared inside this type
+    public ExtraTypeInfo()
+    {
+        this.subTypes = new List<Type>();
+    }
+}
+
 static class Util
 {
     public static String NamespaceToModulePath(String @namespace)
@@ -666,22 +699,20 @@ static class Util
             .Replace("`", "_");
     }
     // rename types that conflict with standard D types
-    public static String GetTypeName(Type type)
+    public static String GetQualifiedTypeName(Type type)
     {
-        // A hack for now, we should probably just generate the code for each type like
-        // this inside the DeclaringType
-        string prefix = "";
-        if (type.DeclaringType != null)
-        {
-            prefix = "InsideOf_" + GetTypeName(type.DeclaringType) + "_";
-        }
+        String prefix = (type.DeclaringType == null) ? "" : GetQualifiedTypeName(type.DeclaringType) + ".";
+        return prefix + GetUnqualifiedTypeName(type);
+    }
+    public static String GetUnqualifiedTypeName(Type type)
+    {
         if (type.Name == "Object")
-            return prefix + "DotNetObject";
+            return "DotNetObject";
         if (type.Name == "Exception")
-            return prefix + "DotNetException";
+            return "DotNetException";
         if (type.Name == "TypeInfo")
-            return prefix + "DotNetTypeInfo";
-        return prefix + type.Name
+            return "DotNetTypeInfo";
+        return type.Name
             .Replace("$", "_")
             .Replace("<", "_")
             .Replace(">", "_")

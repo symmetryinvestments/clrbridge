@@ -4,7 +4,14 @@ public static class ClassOneGeneric<T>
 {
     public static void DumpTypeToConsole()
     {
-        Console.WriteLine("ClassOneGeneric {0}", typeof(T));
+        Console.WriteLine("ClassOneGeneric<{0}>", typeof(T));
+    }
+    public static class SubGeneric<U>
+    {
+        public static void DumpTypesToConsole()
+        {
+            Console.WriteLine("ClassOneGeneric<{0}>.SubGeneric<{1}>", typeof(T), typeof(U));
+        }
     }
     //public static T Passthrough(T value) { return value; }
 
