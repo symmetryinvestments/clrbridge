@@ -12,7 +12,7 @@ void test()
         {
             // TODO: since we are defining the type inside the other type, we don't
             // need to incldue both template types
-            //C.SubGeneric_1!(DlangType!(primitiveType2.type)).DumpTypesToConsole();
+            C.SubGeneric_1!(DlangType!(primitiveType2.type)).DumpTypesToConsole();
         }
     }}
 
