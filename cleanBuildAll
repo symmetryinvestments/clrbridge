@@ -1,5 +1,6 @@
 @default dotnetCompiler csc
-@default dotnetLoader mono
+@windows    @default dotnetLoader ""
+@notwindows @default dotnetLoader "mono"
 @rm out
 
 # download dependencies (i.e. DerelictUtil)
@@ -10,7 +11,8 @@ rund minish.d buildClrBridge dotnetCompiler=${dotnetCompiler}
 
 # at this point the noCodegenExample.d should work this example
 # uses ClrBridge.dll to call into .NET code, but doesn't require any generated code
-rund noCodegenExample.d
+# for some reason, this fails on windows without the "-g" option
+rund -g noCodegenExample.d
 
 # build the ClrBridgeCodgen.exe .NET executable
 # this tool will take an assembly and generate D code to easily call into it

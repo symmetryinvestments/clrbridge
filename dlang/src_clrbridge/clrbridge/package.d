@@ -146,27 +146,40 @@ ClrBridgeError loadClrBridge(CreateClrBridgeDelegate createClrBridgeDelegate, Cl
 
 struct ClrBridge
 {
-    struct Funcs
+    private mixin template FuncsMixin()
     {
-        extern(C) void function(const DotNetObject obj) nothrow @nogc Release;
-        extern(C) uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
-        extern(C) uint function(const Assembly assembly, CString name, Type* outType) nothrow @nogc GetType;
-        extern(C) uint function(const Type type, const ArrayGeneric types, Type* outType) nothrow @nogc ResolveGenericType;
-        extern(C) uint function(const Type type, const ArrayGeneric paramTypes, ConstructorInfo* outConstructor) nothrow @nogc GetConstructor;
-        extern(C) uint function(const Type type, CString name, const ArrayGeneric paramTypes, MethodInfo* outMethod) nothrow @nogc GetMethod;
-        extern(C) uint function(const ConstructorInfo constructor, const Array!(clr.PrimitiveType.Object) args, DotNetObject* outObjectPtr) nothrow @nogc CallConstructor;
-        extern(C) void function(const MethodInfo method, const DotNetObject obj, const Array!(clr.PrimitiveType.Object) args, void** returnValuePtr) nothrow @nogc CallGeneric;
-        extern(C) uint function(const Type type, uint initialsize, ArrayBuilderGeneric* outBuilder) nothrow @nogc ArrayBuilderNew;
-        extern(C) uint function(const ArrayBuilderGeneric builder, ArrayGeneric* outArray) nothrow @nogc ArrayBuilderFinish;
-        extern(C) size_t function(const ArrayBuilderGeneric builder, const DotNetObject obj) nothrow @nogc ArrayBuilderAddGeneric;
+        void function(const DotNetObject obj) nothrow @nogc Release;
+        uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
+        uint function(const Assembly assembly, CString name, Type* outType) nothrow @nogc GetType;
+        uint function(const Type type, const ArrayGeneric types, Type* outType) nothrow @nogc ResolveGenericType;
+        uint function(const Type type, const ArrayGeneric paramTypes, ConstructorInfo* outConstructor) nothrow @nogc GetConstructor;
+        uint function(const Type type, CString name, const ArrayGeneric paramTypes, MethodInfo* outMethod) nothrow @nogc GetMethod;
+        uint function(const ConstructorInfo constructor, const Array!(clr.PrimitiveType.Object) args, DotNetObject* outObjectPtr) nothrow @nogc CallConstructor;
+        void function(const MethodInfo method, const DotNetObject obj, const Array!(clr.PrimitiveType.Object) args, void** returnValuePtr) nothrow @nogc CallGeneric;
+        uint function(const Type type, uint initialsize, ArrayBuilderGeneric* outBuilder) nothrow @nogc ArrayBuilderNew;
+        uint function(const ArrayBuilderGeneric builder, ArrayGeneric* outArray) nothrow @nogc ArrayBuilderFinish;
+        size_t function(const ArrayBuilderGeneric builder, const DotNetObject obj) nothrow @nogc ArrayBuilderAddGeneric;
         static foreach (type; clr.primitiveTypes)
         {
-            mixin("extern(C) DotNetObject function(" ~ type.dlangType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
-            mixin("extern(C) size_t function(const MethodInfo method, " ~ type.dlangType ~ ") nothrow @nogc CallStatic" ~ type.name ~ ";");
-            mixin("extern(C) size_t function(const ArrayBuilder!(clr.PrimitiveType." ~ type.name ~ ") builder, "
+            mixin("DotNetObject function(" ~ type.dlangType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
+            mixin("size_t function(const MethodInfo method, " ~ type.dlangType ~ ") nothrow @nogc CallStatic" ~ type.name ~ ";");
+            mixin("size_t function(const ArrayBuilder!(clr.PrimitiveType." ~ type.name ~ ") builder, "
                 ~ type.dlangType ~ ") nothrow @nogc ArrayBuilderAdd" ~ type.name ~ ";");
         }
-        extern(C) void function(const DotNetObject obj) nothrow @nogc DebugWriteObject;
+        void function(const DotNetObject obj) nothrow @nogc DebugWriteObject;
+    }
+    struct Funcs
+    {
+        version (Windows)
+        {
+            extern (Windows):
+            mixin FuncsMixin;
+        }
+        else
+        {
+            extern (C):
+            mixin FuncsMixin;
+        }
     }
     Funcs funcs;
     union PrimitiveTypes
@@ -182,7 +195,8 @@ struct ClrBridge
     }
     Assembly mscorlib;
     PrimitiveTypes primitiveTypes;
-    Type typeType; // we cache this because it is used so commonly
+    Type typeType; // even though this isn't a primitive type,
+                   // we cache this because it is used so commonly
 
     void debugWriteObject(const DotNetObject obj) { funcs.DebugWriteObject(obj); }
 
@@ -207,7 +221,7 @@ struct ClrBridge
         return obj;
     }
 
-    ClrBridgeError tryLoadAssembly(CString name, Assembly* outAssembly) //nothrow @nogc
+    ClrBridgeError tryLoadAssembly(CString name, Assembly* outAssembly) nothrow @nogc
     {
         const errorCode = funcs.LoadAssembly(name, outAssembly);
         if (errorCode != 0)

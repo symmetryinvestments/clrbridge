@@ -1,5 +1,7 @@
 @default dotnetLoader mono
+@windows    @set picFlags ""
+@notwindows @set picFlags "-fPIC"
 
 @mkdir out/test
-dmd -shared -fPIC -of=out/test/callbackhostdriver -I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/src_mscorlib -I=test -I=test/tests -i test/callbackhostdriver.d
+dmd -shared ${picFlags} -of=out/test/callbackhostdriver -I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/src_mscorlib -I=test -I=test/tests -i test/callbackhostdriver.d
 ${dotnetLoader} out/ClrCallbackHost.exe out/test/callbackhostdriver

@@ -1,4 +1,5 @@
-@default dotnetLoader mono
+@windows    @default dotnetLoader ""
+@notwindows @default dotnetLoader "mono"
 @default dCompiler dmd
 
 @set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge"

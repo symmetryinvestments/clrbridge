@@ -140,6 +140,21 @@ struct Interpreter
                 continue;
             auto lineParts = splitHandleQuoted(substitute(line));
             if (lineParts.length == 0) continue;
+            if (lineParts[0] == "@windows")
+            {
+                version (Windows)
+                    lineParts = lineParts[1..$];
+                else
+                    continue;
+            }
+            else if (lineParts[0] == "@notwindows")
+            {
+                version (Windows)
+                    continue;
+                else
+                    lineParts = lineParts[1..$];
+            }
+            if (lineParts.length == 0) continue;
             string cmd = lineParts[0];
             writefln("+ %s", escapeShellCommand(lineParts));
             stdout.flush();

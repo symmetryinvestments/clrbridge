@@ -1,5 +1,6 @@
 @default dotnetCompiler csc
-@default dotnetLoader mono
+@windows    @default dotnetLoader ""
+@notwindows @default dotnetLoader "mono"
 @default unitTests "primitives fields enums generics"
 
 @scope @foreach test ${unitTests}

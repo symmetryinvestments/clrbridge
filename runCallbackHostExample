@@ -1,3 +1,4 @@
-@default dotnetLoader mono
+@windows    @default dotnetLoader ""
+@notwindows @default dotnetLoader "mono"
 dmd -shared -fPIC -of=out/callbackhostexample -I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/src_mscorlib -i callbackhostexample.d
 ${dotnetLoader} out/ClrCallbackHost.exe out/callbackhostexample
