@@ -7,7 +7,7 @@
 rund minish.d downloadDeps
 
 # build the ClrBridge.dll .NET library
-rund minish.d buildClrBridge dotnetCompiler=${dotnetCompiler}
+rund minish.d buildClrBridge dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
 # at this point the noCodegenExample.d should work this example
 # uses ClrBridge.dll to call into .NET code, but doesn't require any generated code

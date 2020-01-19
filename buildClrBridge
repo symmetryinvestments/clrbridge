@@ -1,7 +1,10 @@
 @default dotnetCompiler csc
+@windows    @default dotnetLoader ""
+@notwindows @default dotnetLoader "mono"
 
-@rm out/ClrBridge.gen.cs out/ClrBridge.dll
+@rm out/GenerateClrBridgeCode.exe out/ClrBridge.gen.cs out/ClrBridge.dll
 @mkdir out
 
-rund -g -debug -I=dlang/src_clr dotnetlib/generateClrBridge.d > out/ClrBridge.gen.cs
+${dotnetCompiler} /out:out/GenerateClrBridgeCode.exe dotnetlib/GenerateClrBridgeCode.cs
+${dotnetLoader} out/GenerateClrBridgeCode.exe > out/ClrBridge.gen.cs
 ${dotnetCompiler} /out:out/ClrBridge.dll /t:library /unsafe dotnetlib/ClrBridge.cs out/ClrBridge.gen.cs
