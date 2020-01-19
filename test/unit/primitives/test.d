@@ -4,8 +4,8 @@ import primitives : Primitives;
 import std.stdio;
 void test()
 {
-    //testValue!bool(false);
-    //testValue!bool(true);
+    testValue!bool(false);
+    testValue!bool(true);
     integerTest!ubyte;
     integerTest!byte;
     integerTest!ushort;

@@ -161,10 +161,10 @@ struct ClrBridge
         size_t function(const ArrayBuilderGeneric builder, const DotNetObject obj) nothrow @nogc ArrayBuilderAddGeneric;
         static foreach (type; clr.primitiveTypes)
         {
-            mixin("DotNetObject function(" ~ type.dlangType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
-            mixin("size_t function(const MethodInfo method, " ~ type.dlangType ~ ") nothrow @nogc CallStatic" ~ type.name ~ ";");
+            mixin("DotNetObject function(" ~ type.marshalType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
+            mixin("size_t function(const MethodInfo method, " ~ type.marshalType ~ ") nothrow @nogc CallStatic" ~ type.name ~ ";");
             mixin("size_t function(const ArrayBuilder!(clr.PrimitiveType." ~ type.name ~ ") builder, "
-                ~ type.dlangType ~ ") nothrow @nogc ArrayBuilderAdd" ~ type.name ~ ";");
+                ~ type.marshalType ~ ") nothrow @nogc ArrayBuilderAdd" ~ type.name ~ ";");
         }
         void function(const DotNetObject obj) nothrow @nogc DebugWriteObject;
     }
@@ -446,7 +446,7 @@ struct ClrBridge
         {
             genericTypes[i] = getClosedType!genericTypeSpec;
             arrayBuilderAddGeneric(builder, genericTypes[i].type);
-            scope (exit) genericTypes[i].release(this);
+            scope (exit) genericTypes[i].finalRelease(this);
         }
         return arrayBuilderFinishGeneric(builder);
     }
@@ -484,18 +484,24 @@ struct ClrBridge
     }
     MethodInfo getClosedMethod(MethodSpec methodSpec)()
     {
-        const type = getClosedType!(methodSpec.typeSpec)();
-        scope (exit) release(type); // todo: don't release primtive types
-        return getClosedMethod!methodSpec(type);
+        const typeResult = getClosedType!(methodSpec.typeSpec)();
+        scope (exit) typeResult.finalRelease(this);
+        return getClosedMethod!methodSpec(typeResult.type);
     }
     MethodInfo getClosedMethod(MethodSpec methodSpec)(const Type type)
+    {
+        const paramTypesArray = getTypesArray!(methodSpec.paramTypes);
+        scope (exit) release(paramTypesArray);
+        return getClosedMethod!methodSpec(type, paramTypesArray);
+    }
+    MethodInfo getClosedMethod(MethodSpec methodSpec)(const Type type, const ArrayGeneric paramTypesArray)
     {
         static if (methodSpec.genericTypes.length > 0)
         {
             const genericTypesArray = getTypesArray!(methodSpec.genericTypes)();
             scope (exit) release(genericTypesArray);
         }
-        Type unresolvedMethod = getMethod(assembly, CStringLiteral!(methodSpec.methodName));
+        auto unresolvedMethod = getMethod(type, CStringLiteral!(methodSpec.methodName), paramTypesArray);
         static if (methodSpec.genericTypes.length == 0)
             return unresolvedMethod;
         else
@@ -508,7 +514,18 @@ struct ClosedTypeResult
 {
     Type type;
     bool canRelease;
-    void release(const ref ClrBridge bridge)
+
+    /// Release the object but don't mark that it is released.  The caller must guarantee release won't
+    /// be called again, otherwise, it should call `trackedRelease`.
+    void finalRelease(const ref ClrBridge bridge) const
+    {
+        if (canRelease)
+            bridge.release(type);
+    }
+
+    /// Release the object and mark that it has been released in case release is called again later.
+    /// If the caller can guarantee that release won't be called again then you can call finalRelease instead.
+    void trackedRelease(const ref ClrBridge bridge)
     {
         if (canRelease)
         {

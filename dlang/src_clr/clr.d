@@ -36,14 +36,16 @@ enum PrimitiveType
 struct PrimitiveTypeInfo
 {
     PrimitiveType type;
-    string dlangType;
+    string dlangEquivalent;
+    string marshalType;
     string name;
     string fullName;
-    this(PrimitiveType type, string dlangType) immutable
+    this(PrimitiveType type, string dlangEquivalent, string marshalType) immutable
     {
         import std.conv : to;
         this.type = type;
-        this.dlangType = dlangType;
+        this.dlangEquivalent = dlangEquivalent;
+        this.marshalType = marshalType;
         this.name = to!string(type);
         this.fullName = "System." ~ name;
     }
@@ -51,21 +53,21 @@ struct PrimitiveTypeInfo
 }
 
 enum primitiveTypes = [
-    PrimitiveType.Boolean : immutable PrimitiveTypeInfo(PrimitiveType.Boolean, "bool"),
-    PrimitiveType.Byte    : immutable PrimitiveTypeInfo(PrimitiveType.Byte   , "ubyte"),
-    PrimitiveType.SByte   : immutable PrimitiveTypeInfo(PrimitiveType.SByte  , "byte"),
-    PrimitiveType.UInt16  : immutable PrimitiveTypeInfo(PrimitiveType.UInt16 , "ushort"),
-    PrimitiveType.Int16   : immutable PrimitiveTypeInfo(PrimitiveType.Int16  , "short"),
-    PrimitiveType.UInt32  : immutable PrimitiveTypeInfo(PrimitiveType.UInt32 , "uint"),
-    PrimitiveType.Int32   : immutable PrimitiveTypeInfo(PrimitiveType.Int32  , "int"),
-    PrimitiveType.UInt64  : immutable PrimitiveTypeInfo(PrimitiveType.UInt64 , "ulong"),
-    PrimitiveType.Int64   : immutable PrimitiveTypeInfo(PrimitiveType.Int64  , "long"),
-    PrimitiveType.Char    : immutable PrimitiveTypeInfo(PrimitiveType.Char   , "char"),
-    PrimitiveType.String  : immutable PrimitiveTypeInfo(PrimitiveType.String , "CString"),
-    PrimitiveType.Single  : immutable PrimitiveTypeInfo(PrimitiveType.Single , "float"),
-    PrimitiveType.Double  : immutable PrimitiveTypeInfo(PrimitiveType.Double , "double"),
-    PrimitiveType.Decimal : immutable PrimitiveTypeInfo(PrimitiveType.Decimal, "Decimal"),
-    PrimitiveType.Object  : immutable PrimitiveTypeInfo(PrimitiveType.Object , "DotNetObject"),
+    PrimitiveType.Boolean : immutable PrimitiveTypeInfo(PrimitiveType.Boolean, "bool",         "ushort"),
+    PrimitiveType.Byte    : immutable PrimitiveTypeInfo(PrimitiveType.Byte   , "ubyte",        "ubyte"),
+    PrimitiveType.SByte   : immutable PrimitiveTypeInfo(PrimitiveType.SByte  , "byte",         "byte"),
+    PrimitiveType.UInt16  : immutable PrimitiveTypeInfo(PrimitiveType.UInt16 , "ushort",       "ushort"),
+    PrimitiveType.Int16   : immutable PrimitiveTypeInfo(PrimitiveType.Int16  , "short",        "short"),
+    PrimitiveType.UInt32  : immutable PrimitiveTypeInfo(PrimitiveType.UInt32 , "uint",         "uint"),
+    PrimitiveType.Int32   : immutable PrimitiveTypeInfo(PrimitiveType.Int32  , "int",          "int"),
+    PrimitiveType.UInt64  : immutable PrimitiveTypeInfo(PrimitiveType.UInt64 , "ulong",        "ulong"),
+    PrimitiveType.Int64   : immutable PrimitiveTypeInfo(PrimitiveType.Int64  , "long",         "long"),
+    PrimitiveType.Char    : immutable PrimitiveTypeInfo(PrimitiveType.Char   , "char",         "char"),
+    PrimitiveType.String  : immutable PrimitiveTypeInfo(PrimitiveType.String , "CString",      "CString"),
+    PrimitiveType.Single  : immutable PrimitiveTypeInfo(PrimitiveType.Single , "float",        "float"),
+    PrimitiveType.Double  : immutable PrimitiveTypeInfo(PrimitiveType.Double , "double",       "double"),
+    PrimitiveType.Decimal : immutable PrimitiveTypeInfo(PrimitiveType.Decimal, "Decimal",      "Decimal"),
+    PrimitiveType.Object  : immutable PrimitiveTypeInfo(PrimitiveType.Object , "DotNetObject", "DotNetObject"),
 ];
 
 template Info(PrimitiveType T)

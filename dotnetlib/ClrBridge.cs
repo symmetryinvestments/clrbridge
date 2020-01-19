@@ -126,8 +126,8 @@ public static partial class ClrBridge
     {
         if (type == typeof(void)) {
             // nothing to marshall
-        //} else if (type == typeof(Boolean)) {
-        //    *(Byte*)returnValuePtr = ((Boolean)obj) ? (Byte)1 : (Byte)0;
+        } else if (type == typeof(Boolean)) {
+            *(UInt16*)returnValuePtr = ((Boolean)obj) ? (UInt16)1 : (UInt16)0;
         } else if (type == typeof(Byte)) {
             *(Byte*)returnValuePtr = (Byte)obj;
         } else if (type == typeof(SByte)) {

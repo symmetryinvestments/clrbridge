@@ -202,7 +202,7 @@ class Generator
         Type[] genericArgs = type.GetGenericArguments();
         Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
         GenerateMetadata(module, type, genericArgs);
-        String baseTypeDName = ToDType(type.BaseType);
+        String baseTypeDName = ToDEquivalentType(type.BaseType); // TODO: Marshal Type instead???
         module.WriteLine("    private {0} {1}; // .NET BasteType is actually {2}", baseTypeDName, EnumValueFieldName, type.BaseType);
         module.WriteLine("    enum : typeof(this)");
         module.WriteLine("    {");
@@ -302,7 +302,7 @@ class Generator
         if (type.IsGenericParameter)
         {
             Debug.Assert(genericArgs.IsEmpty(), "you can have a generic parameter type with generic args??");
-            module.Write("__d.clrbridge.GetTypeSpec!({0})", ToDType(type));
+            module.Write("__d.clrbridge.GetTypeSpec!({0})", ToDEquivalentType(type));
             return;
         }
         module.WriteLine("__d.clr.TypeSpec(");
@@ -314,7 +314,7 @@ class Generator
             module.WriteLine();
             foreach (Type genericArg in genericArgs)
             {
-                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDType(genericArg));
+                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDEquivalentType(genericArg));
             }
             module.Write("{0}])", linePrefix);
         }
@@ -330,7 +330,7 @@ class Generator
             module.WriteLine("[");
             foreach (Type genericArg in genericArgs)
             {
-                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDType(genericArg));
+                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDEquivalentType(genericArg));
             }
             module.Write("{0}]", linePrefix);
         }
@@ -373,7 +373,7 @@ class Generator
                 GetExtraAssemblyInfo(fieldType.Assembly).fromDllPrefix;
             // fields are represented as D @property functions
             module.WriteLine("    @property {0} {1}() {{ return typeof(return).init; }}; // fromPrefix '{2}' {3} {4}",
-                ToDType(fieldType),
+                ToDEquivalentType(fieldType),
                 field.Name.ToDIdentifier(),
                 fromDll,
                 field.FieldType, field.FieldType.AssemblyQualifiedName);
@@ -417,7 +417,7 @@ class Generator
             if (method.ReturnType == typeof(void))
                 module.Write(" void");
             else
-                module.Write(" {0}", ToDType(method.ReturnType));
+                module.Write(" {0}", ToDEquivalentType(method.ReturnType));
             module.Write(" {0}", Util.ToDIdentifier(method.Name));
             ParameterInfo[] parameters = method.GetParameters();
             GenerateGenericParameters(module, genericArguments, type.GetGenericArgCount());
@@ -458,7 +458,7 @@ class Generator
             string prefix = "";
             foreach (ParameterInfo parameter in parameters)
             {
-                module.Write("{0}{1} {2}", prefix, ToDType(parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
+                module.Write("{0}{1} {2}", prefix, ToDEquivalentType(parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
                 prefix = ", ";
             }
         }
@@ -487,9 +487,10 @@ class Generator
         String methodTypeString = method.IsConstructor ? "Constructor" : "Method";
 
         // Get Assembly so we can get Type then Method (TODO: cache this somehow?)
-        module.WriteLine("        auto  __this_type__ = __d.globalClrBridge.getClosedType!(__clrmetadata.typeSpec);");
-        module.WriteLine("        scope (exit) __this_type__.release(__d.globalClrBridge);");
+        module.WriteLine("        const  __this_type__ = __d.globalClrBridge.getClosedType!(__clrmetadata.typeSpec);");
+        module.WriteLine("        scope (exit) __this_type__.finalRelease(__d.globalClrBridge);");
         module.WriteLine("        assert(__method_spec__.genericTypes.length == 0, \"methods with generic args not implemented\");");
+        // TODO: use getClosedMethod and getClosedConstructor
         module.WriteLine("        const __method__ = __d.globalClrBridge.get{0}(__this_type__.type,", methodTypeString);
         if (!method.IsConstructor)
             module.WriteLine("            __d.CStringLiteral!\"{0}\",", method.Name);
@@ -550,8 +551,11 @@ class Generator
             returnValueAddrString = "null";
         else
         {
-            module.WriteLine("        typeof(return) __return_value__;");
             returnValueAddrString = "cast(void**)&__return_value__";
+            if (returnType == typeof(Boolean))
+                module.WriteLine("        ushort __return_value__;");
+            else
+                module.WriteLine("        typeof(return) __return_value__;");
         }
 
         if (method.IsConstructor)
@@ -563,7 +567,9 @@ class Generator
             module.WriteLine("        __d.globalClrBridge.funcs.CallGeneric(__method__, __d.clr.DotNetObject.nullObject, __param_values__, {0});", returnValueAddrString);
         }
 
-        if (returnType != typeof(void))
+        if (returnType == typeof(Boolean))
+            module.WriteLine("        return (__return_value__ == 0) ? false : true;");
+        else if (returnType != typeof(void))
             module.WriteLine("        return __return_value__;");
     }
 
@@ -580,8 +586,14 @@ class Generator
         module.DecreaseDepth();
     }
 
+    static String ToDMarshalType(Type type)
+    {
+        if (type == typeof(Boolean)) return "ushort";
+        return ToDEquivalentType(type);
+    }
+
     // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?
-    static String ToDType(Type type)
+    static String ToDEquivalentType(Type type)
     {
         if (type.IsGenericParameter)
             return type.Name;
