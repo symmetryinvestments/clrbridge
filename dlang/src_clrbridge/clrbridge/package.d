@@ -8,7 +8,7 @@ import hresult;
 import core.stdc.stdlib : malloc, free;
 
 static import clr;
-import clr : DotNetObject, Decimal, TypeSpec;
+import clr : DotNetObject, Enum, Decimal, TypeSpec;
 
 mixin template DotnetPrimitiveWrappers(string funcName)
 {
@@ -35,13 +35,6 @@ struct ArrayGeneric { mixin DotNetObjectMixin!"DotNetObject"; }
 
 struct ArrayBuilder(clr.PrimitiveType T) { mixin DotNetObjectMixin!"DotNetObject"; }
 struct ArrayBuilderGeneric { mixin DotNetObjectMixin!"DotNetObject"; }
-
-struct Enum
-{
-    uint value;
-    typeof(this) opBinary(string op)(const typeof(this) right) const
-    { return typeof(this)(mixin("this.value " ~ op ~ " right.value")); }
-}
 
 // Keep this in sync with the error codes in ClrBridge.cs
 enum ClrBridgeErrorCode : ubyte
@@ -159,6 +152,8 @@ struct ClrBridge
         uint function(const Type type, uint initialsize, ArrayBuilderGeneric* outBuilder) nothrow @nogc ArrayBuilderNew;
         uint function(const ArrayBuilderGeneric builder, ArrayGeneric* outArray) nothrow @nogc ArrayBuilderFinish;
         size_t function(const ArrayBuilderGeneric builder, const DotNetObject obj) nothrow @nogc ArrayBuilderAddGeneric;
+
+        DotNetObject function(const Type type, const ulong value) nothrow @nogc BoxEnumUInt64;
         static foreach (type; clr.primitiveTypes)
         {
             mixin("DotNetObject function(" ~ type.marshalType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
@@ -205,17 +200,22 @@ struct ClrBridge
         funcs.Release(obj);
     }
 
-    ClrBridgeError tryBox(clr.PrimitiveType T)(clr.DlangType!T value, DotNetObject *outObject) nothrow @nogc
+    DotNetObject boxEnum(T)(const Type enumType, Enum!T enumValue)
     {
-        *outObject = mixin("funcs.Box" ~ clr.Info!T.name ~ "(value)");
+        // TODO: will this handle signed types correct?  Maybe I need to cast to long first for singed types?
+        return funcs.BoxEnumUInt64(enumType, cast(ulong)enumValue.integerValue);
+    }
+    ClrBridgeError tryBox(string typeName)(clr.DlangType!typeName value, DotNetObject *outObject) nothrow @nogc
+    {
+        *outObject = mixin("funcs.Box" ~ typeName ~ "(value)");
         return ClrBridgeError.none;
     }
-    DotNetObject box(clr.PrimitiveType T)(clr.DlangType!T value)
+    DotNetObject box(string typeName)(clr.DlangType!typeName value)
     {
         import std.format : format;
 
         DotNetObject obj;
-        const result = tryBox!T(value, &obj);
+        const result = tryBox!typeName(value, &obj);
         if (result.failed)
             throw new Exception(format("failed to box a value: %s", result));
         return obj;
@@ -591,7 +591,7 @@ template GetTypeSpec(T)
 /**
 Reference a type from another .NET assembly
 */
-template fromDll(string name)
+template from(string name)
 {
-    mixin("import fromDll = " ~ name ~ ";");
+    mixin("import from = " ~ name ~ ";");
 }

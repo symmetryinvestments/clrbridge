@@ -97,7 +97,7 @@ int main()
 
     // call using object array
     {
-        const msg = globalClrBridge.box!(clr.PrimitiveType.String)(CStringLiteral!"calling Console.WriteLine from D with Object Array!");
+        const msg = globalClrBridge.box!"String"(CStringLiteral!"calling Console.WriteLine from D with Object Array!");
         scope(exit) globalClrBridge.release(msg);
         const args = globalClrBridge.makeObjectArray(msg);
         scope(exit) globalClrBridge.release(args);

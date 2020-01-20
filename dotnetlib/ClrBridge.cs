@@ -152,6 +152,8 @@ public static partial class ClrBridge
             *(Double*)returnValuePtr = (Double)obj;
         } else if (type == typeof(Decimal)) {
             *(Decimal*)returnValuePtr = (Decimal)obj;
+        } else if (type.IsEnum) {
+            MarshalReturnValue(Enum.GetUnderlyingType(type), obj, returnValuePtr);
         } else {
             Console.WriteLine("WARNING: cannot marshal return type '{0}' to native yet", type.Name);
         }
@@ -194,6 +196,12 @@ public static partial class ClrBridge
             }
         }
         Console.WriteLine("DebugWriteObject: '{0}'", obj);
+    }
+
+    public static IntPtr BoxEnumUInt64(IntPtr enumTypePtr, UInt64 enumValue)
+    {
+        Type enumType = (Type)GCHandle.FromIntPtr(enumTypePtr).Target;
+        return GCHandle.ToIntPtr(GCHandle.Alloc(Enum.ToObject(enumType, enumValue)));
     }
 }
 

@@ -94,6 +94,19 @@ struct DotNetObject
     static DotNetObject nullObject() { return typeof(this)(null); }
     bool isNull() const { return _ptr is null; }
 }
+
+struct Enum(T)
+{
+    static struct __clrmetadata
+    {
+        enum typeSpec = TypeSpec("mscorlib", "System.Enum", null);
+    }
+
+    T integerValue;
+    typeof(this) opBinary(string op)(const typeof(this) right) const
+    { return typeof(this)(mixin("this.integerValue " ~ op ~ " right.integerValue")); }
+}
+
 struct Decimal
 {
     static struct __clrmetadata
@@ -127,5 +140,28 @@ template DlangType(PrimitiveType T)
     else static if (T == PrimitiveType.Double)  alias DlangType = double;
     else static if (T == PrimitiveType.Decimal) alias DlangType = Decimal;
     else static if (T == PrimitiveType.Object)  alias DlangType = DotNetObject;
+    else static assert(0);
+}
+
+template DlangType(string typeName)
+{
+    import cstring : CString;
+
+         static if (typeName == "Boolean") alias DlangType = bool;
+    else static if (typeName == "Byte")    alias DlangType = ubyte;
+    else static if (typeName == "SByte")   alias DlangType = byte;
+    else static if (typeName == "UInt16")  alias DlangType = ushort;
+    else static if (typeName == "Int16")   alias DlangType = short;
+    else static if (typeName == "UInt32")  alias DlangType = uint;
+    else static if (typeName == "Int32")   alias DlangType = int;
+    else static if (typeName == "UInt64")  alias DlangType = ulong;
+    else static if (typeName == "Int64")   alias DlangType = long;
+    else static if (typeName == "Char")    alias DlangType = char;
+    else static if (typeName == "String")  alias DlangType = CString;
+    else static if (typeName == "Single")  alias DlangType = float;
+    else static if (typeName == "Double")  alias DlangType = double;
+    else static if (typeName == "Decimal") alias DlangType = Decimal;
+    else static if (typeName == "Object")  alias DlangType = DotNetObject;
+    else static if (typeName == "Enum")    alias DlangType = Enum;
     else static assert(0);
 }

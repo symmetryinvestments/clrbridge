@@ -45,27 +45,19 @@ static class ClrBridgeCodegen
     }
 }
 
-class Generator
+class ExtraReflection
 {
-    readonly Assembly thisAssembly;
-    readonly String outputDir;
-    readonly Dictionary<Assembly, ExtraAssemblyInfo> assemblyInfoMap;
-    readonly Dictionary<Type, ExtraTypeInfo> typeInfoMap;
-    readonly Dictionary<String,DModule> moduleMap;
-    readonly String thisAssemblyPackageName; // cached version of GetExtraAssemblyInfo(thisAssembly).packageName
-    // bool lowercaseModules;
-
-    public Generator(Assembly thisAssembly, String outputDir)
+    protected readonly Assembly thisAssembly;
+    protected readonly Dictionary<Assembly, ExtraAssemblyInfo> assemblyInfoMap;
+    protected readonly Dictionary<Type, ExtraTypeInfo> typeInfoMap;
+    public ExtraReflection(Assembly thisAssembly)
     {
         this.thisAssembly = thisAssembly;
-        this.outputDir = outputDir;
         this.assemblyInfoMap = new Dictionary<Assembly,ExtraAssemblyInfo>();
         this.typeInfoMap = new Dictionary<Type,ExtraTypeInfo>();
-        this.moduleMap = new Dictionary<String,DModule>();
-        this.thisAssemblyPackageName = GetExtraAssemblyInfo(thisAssembly).packageName;
     }
 
-    ExtraAssemblyInfo GetExtraAssemblyInfo(Assembly assembly)
+    public ExtraAssemblyInfo GetExtraAssemblyInfo(Assembly assembly)
     {
         ExtraAssemblyInfo info;
         if (!assemblyInfoMap.TryGetValue(assembly, out info))
@@ -77,15 +69,86 @@ class Generator
         }
         return info;
     }
-    ExtraTypeInfo GetExtraTypeInfo(Type type)
+    public ExtraTypeInfo GetExtraTypeInfo(Type type)
     {
         ExtraTypeInfo info;
         if (!typeInfoMap.TryGetValue(type, out info))
         {
-            info = new ExtraTypeInfo();
+            ExtraAssemblyInfo assemblyInfo = GetExtraAssemblyInfo(type.Assembly);
+            String moduleName = type.Namespace.IsEmpty() ? assemblyInfo.packageName :
+                String.Format("{0}.{1}", assemblyInfo.packageName, type.Namespace.ToDQualifiedIdentifier());
+            String moduleRelativeName = type.Name.ToDIdentifier();
+            if (type.DeclaringType != null)
+                moduleRelativeName = String.Format("{0}.{1}", GetExtraTypeInfo(type.DeclaringType).moduleRelativeName, moduleRelativeName);
+            info = new ExtraTypeInfo(moduleName, moduleRelativeName);
             typeInfoMap[type] = info;
         }
         return info;
+    }
+
+    // namespaceContext is the C# Namespace for which code is currently being generated
+    public String ToDMarshalType(String namespaceContext, Type type)
+    {
+        if (type == typeof(Boolean)) return "ushort";
+        return ToDEquivalentType(namespaceContext, type);
+    }
+
+    // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?
+    // namespaceContext is the C# Namespace for which code is currently being generated
+    public String ToDEquivalentType(String namespaceContext, Type type)
+    {
+        if (type.IsGenericParameter)
+            return type.Name;
+
+        Debug.Assert(type != typeof(void)); // not handled yet
+        if (type == typeof(Boolean)) return "bool";
+        if (type == typeof(Byte))    return "ubyte";
+        if (type == typeof(SByte))   return "byte";
+        if (type == typeof(UInt16))  return "ushort";
+        if (type == typeof(Int16))   return "short";
+        if (type == typeof(UInt32))  return "uint";
+        if (type == typeof(Int32))   return "int";
+        if (type == typeof(UInt64))  return "ulong";
+        if (type == typeof(Int64))   return "long";
+        if (type == typeof(Char))    return "char";
+        if (type == typeof(String))  return "__d.CString";
+        if (type == typeof(Single))  return "float";
+        if (type == typeof(Double))  return "double";
+        if (type == typeof(Decimal)) return "__d.clr.Decimal";
+        if (type == typeof(Object))  return "__d.clr.DotNetObject";
+
+        // non primitive types
+
+        // TODO: do this for all types, not just enums
+        ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
+        // we need to include the qualifier even on types in the same module so their names don't conflict
+        // with other symbols in this same module (like methods/variables)
+        String qualifier = (type.Assembly == thisAssembly && namespaceContext == type.Namespace) ? typeInfo.moduleName :
+            String.Format("__d.clrbridge.from!\"{0}\"", typeInfo.moduleName);
+        if (type.IsEnum)
+        {
+            // workaround issue in mscorlib with referencing the SecurityZone type
+            if (type.Name == "SecurityZone") return "__d.clr.Enum!int";
+            return String.Format("{0}.{1}", qualifier, typeInfo.moduleRelativeName);
+        }
+
+        //return "__d.clr.DotNetObject";
+        return String.Format("__d.clr.DotNetObject /*{0}*/", type.FullName);
+    }
+}
+
+class Generator : ExtraReflection
+{
+    readonly String outputDir;
+    readonly Dictionary<String,DModule> moduleMap;
+    readonly String thisAssemblyPackageName; // cached version of GetExtraAssemblyInfo(thisAssembly).packageName
+
+    public Generator(Assembly thisAssembly, String outputDir)
+        : base(thisAssembly)
+    {
+        this.outputDir = outputDir;
+        this.moduleMap = new Dictionary<String,DModule>();
+        this.thisAssemblyPackageName = GetExtraAssemblyInfo(thisAssembly).packageName;
     }
 
     public void GenerateModule(Assembly assembly)
@@ -114,12 +177,9 @@ class Generator
                 Console.WriteLine("[DEBUG] NewDModule '{0}'", outputDFilename);
                 Directory.CreateDirectory(Path.GetDirectoryName(outputDFilename));
                 StreamWriter writer = new StreamWriter(new FileStream(outputDFilename, FileMode.Create, FileAccess.Write, FileShare.Read));
-                // TODO: modify if lowercaseModules
-                String moduleFullName = thisAssemblyPackageName;
-                if (type.Namespace.NullToEmpty().Length > 0)
-                    moduleFullName = String.Format("{0}.{1}", thisAssemblyPackageName, type.Namespace);
-                module = new DModule(moduleFullName, writer);
-                writer.WriteLine("module {0};", moduleFullName);
+                ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
+                module = new DModule(type.Namespace, typeInfo.moduleName, writer);
+                writer.WriteLine("module {0};", typeInfo.moduleName);
                 writer.WriteLine("");
                 writer.WriteLine("// Keep D Symbols inside the __d struct to prevent symbol conflicts");
                 writer.WriteLine("struct __d");
@@ -196,15 +256,16 @@ class Generator
 
     void GenerateEnum(DModule module, Type type)
     {
-        const String EnumValueFieldName = "value__";
+        const String EnumValueFieldName = "__value__";
         module.WriteLine("/* .NET Enum */ static struct {0}", Util.GetUnqualifiedTypeName(type));
         module.WriteLine("{");
         Type[] genericArgs = type.GetGenericArguments();
         Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
         GenerateMetadata(module, type, genericArgs);
-        String baseTypeDName = ToDEquivalentType(type.BaseType); // TODO: Marshal Type instead???
-        module.WriteLine("    private {0} {1}; // .NET BasteType is actually {2}", baseTypeDName, EnumValueFieldName, type.BaseType);
-        module.WriteLine("    enum : typeof(this)");
+        String baseTypeDName = ToDEquivalentType(module.dotnetNamespace, Enum.GetUnderlyingType(type)); // TODO: Marshal Type instead???
+        module.WriteLine("    __d.clr.Enum!{0} {1};", baseTypeDName, EnumValueFieldName);
+        module.WriteLine("    alias {0} this;", EnumValueFieldName);
+        module.WriteLine("    enum : typeof(this)", baseTypeDName);
         module.WriteLine("    {");
         UInt32 nonStaticFieldCount = 0;
         foreach (FieldInfo field in type.GetFields())
@@ -217,7 +278,7 @@ class Generator
                 nonStaticFieldCount++;
                 continue;
             }
-            module.WriteLine("        {0} = typeof(this)({1}({2})),", Util.ToDIdentifier(field.Name), baseTypeDName, field.GetRawConstantValue());
+            module.WriteLine("        {0} = typeof(this)(__d.clr.Enum!{1}({2})),", Util.ToDIdentifier(field.Name), baseTypeDName, field.GetRawConstantValue());
         }
         module.WriteLine("    }");
         Debug.Assert(nonStaticFieldCount == 1);
@@ -236,7 +297,7 @@ class Generator
 
         // Generate opMethods so this behaves like an enum
         module.WriteLine("    typeof(this) opBinary(string op)(const typeof(this) right) const");
-        module.WriteLine("    { return typeof(this)(mixin(\"this.value__ \" ~ op ~ \" right.value__\")); }");
+        module.WriteLine("    { return typeof(this)(mixin(\"this.__value__ \" ~ op ~ \" right.__value__\")); }");
         // TODO: there's probably more (or less) to generate to get the behavior right
         module.WriteLine("}");
     }
@@ -302,7 +363,7 @@ class Generator
         if (type.IsGenericParameter)
         {
             Debug.Assert(genericArgs.IsEmpty(), "you can have a generic parameter type with generic args??");
-            module.Write("__d.clrbridge.GetTypeSpec!({0})", ToDEquivalentType(type));
+            module.Write("__d.clrbridge.GetTypeSpec!({0})", ToDEquivalentType(module.dotnetNamespace, type));
             return;
         }
         module.WriteLine("__d.clr.TypeSpec(");
@@ -314,7 +375,7 @@ class Generator
             module.WriteLine();
             foreach (Type genericArg in genericArgs)
             {
-                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDEquivalentType(genericArg));
+                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDEquivalentType(module.dotnetNamespace, genericArg));
             }
             module.Write("{0}])", linePrefix);
         }
@@ -330,7 +391,7 @@ class Generator
             module.WriteLine("[");
             foreach (Type genericArg in genericArgs)
             {
-                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDEquivalentType(genericArg));
+                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDEquivalentType(module.dotnetNamespace, genericArg));
             }
             module.Write("{0}]", linePrefix);
         }
@@ -369,13 +430,10 @@ class Generator
         foreach (FieldInfo field in type.GetFields())
         {
             Type fieldType = field.FieldType;
-            String fromDll = (fieldType.Assembly == thisAssembly) ? "" :
-                GetExtraAssemblyInfo(fieldType.Assembly).fromDllPrefix;
             // fields are represented as D @property functions
-            module.WriteLine("    @property {0} {1}() {{ return typeof(return).init; }}; // fromPrefix '{2}' {3} {4}",
-                ToDEquivalentType(fieldType),
+            module.WriteLine("    @property {0} {1}() {{ return typeof(return).init; }}; // {2} {3}",
+                ToDEquivalentType(module.dotnetNamespace, fieldType),
                 field.Name.ToDIdentifier(),
-                fromDll,
                 field.FieldType, field.FieldType.AssemblyQualifiedName);
         }
     }
@@ -417,7 +475,7 @@ class Generator
             if (method.ReturnType == typeof(void))
                 module.Write(" void");
             else
-                module.Write(" {0}", ToDEquivalentType(method.ReturnType));
+                module.Write(" {0}", ToDEquivalentType(module.dotnetNamespace, method.ReturnType));
             module.Write(" {0}", Util.ToDIdentifier(method.Name));
             ParameterInfo[] parameters = method.GetParameters();
             GenerateGenericParameters(module, genericArguments, type.GetGenericArgCount());
@@ -427,6 +485,8 @@ class Generator
                 module.WriteLine(";");
                 continue;
             }
+            if (!method.IsStatic)
+                module.Write(" const"); // all methods are const because the struct is just a handle to a C# object
             module.WriteLine();
             module.WriteLine("    {");
             GenerateMethodBody(module, type, method, method.ReturnType, parameters);
@@ -458,7 +518,7 @@ class Generator
             string prefix = "";
             foreach (ParameterInfo parameter in parameters)
             {
-                module.Write("{0}{1} {2}", prefix, ToDEquivalentType(parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
+                module.Write("{0}{1} {2}", prefix, ToDEquivalentType(module.dotnetNamespace, parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
                 prefix = ", ";
             }
         }
@@ -475,6 +535,7 @@ class Generator
                 module.WriteLine("        return typeof(return).init;");
             return;
         }
+
         // TODO: we may want to cache some of this stuff, but for now we'll just get it every time
         Type[] genericArgs = method.IsGenericMethod ? method.GetGenericArguments() : null;
         module.WriteLine("        enum __method_spec__ = __d.clrbridge.MethodSpec(__clrmetadata.typeSpec, \"{0}\",", method.Name);
@@ -510,12 +571,22 @@ class Generator
                 {
                     // skip complicated types for now
                 }
+                else if (parameter.ParameterType.IsEnum)
+                {
+                    module.WriteLine("        auto  __param{0}__ = __d.clr.DotNetObject.nullObject;", paramIndex);
+                    module.WriteLine("        scope (exit) if (!__param{0}__.isNull) __d.globalClrBridge.release(__param{0}__);", paramIndex);
+                    module.WriteLine("        {");
+                    module.WriteLine("            const  __enum_type__ = __d.globalClrBridge.getClosedType!({0}.__clrmetadata.typeSpec);", parameter.Name.ToDIdentifier());
+                    module.WriteLine("            scope (exit) __enum_type__.finalRelease(__d.globalClrBridge);");
+                    module.WriteLine("            __param{0}__ = __d.globalClrBridge.boxEnum(__enum_type__.type, {1});", paramIndex, parameter.Name.ToDIdentifier());
+                    module.WriteLine("        }");
+                }
                 else
                 {
                     String boxType = TryGetBoxType(parameter.ParameterType);
                     if (boxType != null)
                     {
-                        module.WriteLine("        auto  __param{0}__ = __d.globalClrBridge.box!(__d.clr.PrimitiveType.{1})({2}); // actual type is {3}",
+                        module.WriteLine("        auto  __param{0}__ = __d.globalClrBridge.box!\"{1}\"({2}); // actual type is {3}",
                             paramIndex, boxType, Util.ToDIdentifier(parameter.Name), Util.GetQualifiedTypeName(parameter.ParameterType));
                         module.WriteLine("        scope (exit) __d.globalClrBridge.release(__param{0}__);", paramIndex);
                     }
@@ -535,7 +606,7 @@ class Generator
                 string prefix = " ";
                 foreach (ParameterInfo parameter in parameters)
                 {
-                    if (TryGetBoxType(parameter.ParameterType) != null)
+                    if (parameter.ParameterType.IsEnum || TryGetBoxType(parameter.ParameterType) != null)
                         module.WriteLine("            {0}__param{1}__", prefix, paramIndex);
                     else
                         module.WriteLine("            {0}{1}", prefix, Util.ToDIdentifier(parameter.Name));
@@ -564,7 +635,13 @@ class Generator
         }
         else
         {
-            module.WriteLine("        __d.globalClrBridge.funcs.CallGeneric(__method__, __d.clr.DotNetObject.nullObject, __param_values__, {0});", returnValueAddrString);
+            String thisRefCode;
+            if (type.IsValueType)
+                // don't handle value types yet
+                thisRefCode = "__d.clr.DotNetObject.nullObject";
+            else
+                thisRefCode = method.IsStatic ? "__d.clr.DotNetObject.nullObject" : "this";
+            module.WriteLine("        __d.globalClrBridge.funcs.CallGeneric(__method__, {0}, __param_values__, {1});", thisRefCode, returnValueAddrString);
         }
 
         if (returnType == typeof(Boolean))
@@ -586,42 +663,6 @@ class Generator
         module.DecreaseDepth();
     }
 
-    static String ToDMarshalType(Type type)
-    {
-        if (type == typeof(Boolean)) return "ushort";
-        return ToDEquivalentType(type);
-    }
-
-    // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?
-    static String ToDEquivalentType(Type type)
-    {
-        if (type.IsGenericParameter)
-            return type.Name;
-
-        Debug.Assert(type != typeof(void)); // not handled yet
-        if (type == typeof(Boolean)) return "bool";
-        if (type == typeof(Byte))    return "ubyte";
-        if (type == typeof(SByte))   return "byte";
-        if (type == typeof(UInt16))  return "ushort";
-        if (type == typeof(Int16))   return "short";
-        if (type == typeof(UInt32))  return "uint";
-        if (type == typeof(Int32))   return "int";
-        if (type == typeof(UInt64))  return "ulong";
-        if (type == typeof(Int64))   return "long";
-        if (type == typeof(Char))    return "char";
-        if (type == typeof(String))  return "__d.CString";
-        if (type == typeof(Single))  return "float";
-        if (type == typeof(Double))  return "double";
-        if (type == typeof(Decimal)) return "__d.clr.Decimal";
-        if (type == typeof(Object))  return "__d.clr.DotNetObject";
-
-        // non primitive types
-        if (type == typeof(Enum)) return "__d.clrbridge.Enum"; // I think System.Enum is always 32 bits, verify this
-
-        //String fromDll = (fieldType.Assembly == thisAssembly) ? "" :
-        //    GetExtraAssemblyInfo(fieldType.Assembly).fromDllPrefix;
-        return "__d.clr.DotNetObject";
-    }
     static String TryGetBoxType(Type type)
     {
         // TODO: Handle type.IsGenericParameter
@@ -642,7 +683,12 @@ class Generator
         if (type == typeof(Single))  return "Single";
         if (type == typeof(Double))  return "Double";
         if (type == typeof(Decimal)) return "Decimal";
-        if (type == typeof(Object))  return null;
+        Debug.Assert(!type.IsEnum, "type.IsEnum should have been handed before calling TryGetBoxType");
+        if (type.IsValueType)
+        {
+            //Console.WriteLine("TODO: unknown box type for value type '{0}'", type);
+            return "Object";
+        }
         return null;
     }
 }
@@ -671,13 +717,15 @@ class TabStringPool
 
 class DModule
 {
+    public readonly String dotnetNamespace;
     public readonly String fullName;
     private readonly StreamWriter writer;
     private readonly TabStringPool tabPool;
     private Boolean atMiddleOfLine;
     private UInt16 depth;
-    public DModule(String fullName, StreamWriter writer)
+    public DModule(String dotnetNamespace, String fullName, StreamWriter writer)
     {
+        this.dotnetNamespace = dotnetNamespace;
         this.fullName = fullName;
         this.writer = writer;
         this.tabPool = new TabStringPool();
@@ -727,19 +775,22 @@ class DModule
 class ExtraAssemblyInfo
 {
     public readonly string packageName;
-    public readonly string fromDllPrefix;
     public ExtraAssemblyInfo(string packageName)
     {
         this.packageName = packageName;
-        this.fromDllPrefix = String.Format("fromDll!\"{0}\".", packageName);
     }
 }
 
 class ExtraTypeInfo
 {
+    public readonly String moduleName;
+    // Name of the type if referencing from the root of the module
+    public readonly String moduleRelativeName;
     public readonly List<Type> subTypes; // types that are declared inside this type
-    public ExtraTypeInfo()
+    public ExtraTypeInfo(String moduleName, String moduleRelativeName)
     {
+        this.moduleName = moduleName;
+        this.moduleRelativeName = moduleRelativeName;
         this.subTypes = new List<Type>();
     }
 }
@@ -758,9 +809,20 @@ static class Util
         }
         return Path.Combine(path, "package.d");
     }
+    public static String ToDQualifiedIdentifier(this String s)
+    {
+        // TODO: this is definitely innefficient
+        String[] parts = s.Split(".");
+        for (UInt32 i = 0; i < parts.Length; i++)
+        {
+            parts[i] = ToDIdentifier(parts[i]);
+        }
+        return String.Join(".", parts);
+    }
     // add a trailing '_' to keywords
     public static String ToDIdentifier(this String s)
     {
+        Debug.Assert(!s.Contains("."), String.Format("identifier '{0}' contains '.' so need to use ToDQualifiedIdentifier", s));
         if (s == "align") return "align_";
         if (s == "module") return "module_";
         if (s == "version") return "version_";
@@ -768,12 +830,14 @@ static class Util
         if (s == "scope") return "scope_";
         if (s == "asm") return "asm_";
         if (s == "lazy") return "lazy_";
+        if (s == "alias") return "alias_";
         return s
             .Replace("$", "_")
             .Replace("<", "_")
             .Replace(">", "_")
             .Replace("=", "_")
-            .Replace("`", "_");
+            .Replace("`", "_")
+            .Replace("+", "_");
     }
     // rename types that conflict with standard D types
     public static String GetQualifiedTypeName(Type type)
@@ -794,7 +858,8 @@ static class Util
             .Replace("<", "_")
             .Replace(">", "_")
             .Replace("=", "_")
-            .Replace("`", "_");
+            .Replace("`", "_")
+            .Replace("+", "_");
     }
 }
 
@@ -805,6 +870,7 @@ static class Extensions
        return (s == null) ? "" : s;
     }
     public static Boolean IsEmpty<T>(this T[] array) { return array == null || array.Length == 0; }
+    public static Boolean IsEmpty(this String s) { return s == null || s.Length == 0; }
     public static UInt16 ToUInt16(this Int32 value)
     {
         if (value > (Int32)UInt16.MaxValue)
