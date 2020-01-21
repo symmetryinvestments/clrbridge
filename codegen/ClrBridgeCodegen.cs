@@ -916,6 +916,7 @@ class ExtraTypeInfo
 
 static class Util
 {
+    static readonly Char[] DotCharArray = new Char[] {'.'};
     public static String NamespaceToModulePath(String @namespace)
     {
         String path = "";
@@ -931,7 +932,7 @@ static class Util
     public static String ToDQualifiedIdentifier(this String s)
     {
         // TODO: this is definitely innefficient
-        String[] parts = s.Split(".");
+        String[] parts = s.Split(DotCharArray);
         for (UInt32 i = 0; i < parts.Length; i++)
         {
             parts[i] = ToDIdentifier(parts[i]);
