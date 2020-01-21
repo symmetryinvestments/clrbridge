@@ -2,6 +2,15 @@
 
 Call .NET code from other languages.  Currently focused on the D programming language, with the possibility of adding support for other langauges.
 
+# Current State
+
+See tests to see what currently works.
+
+* [test/tests](test/tests)
+* [test/unit](test/unit)
+
+Currently ClrBridge supports calling static methods with primitive types and enum types.  The development strategy is to translate mscorlib, but translating the whole thing requires full support, so the code generator skips unsupported constructs during this initial stage of development.  As more functionality gets added, the features that are currently skipped will be enabled and unit tests added along the way.
+
 # How it Works
 
 .NET code requires the CLR runtime to execute.  This repo currently supports 2 mechanisms to initialize the CLR runtime in order to run .NET code from native code.
