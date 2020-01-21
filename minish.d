@@ -135,7 +135,7 @@ struct Interpreter
         for (size_t nextLineIndex = startLineIndex; nextLineIndex < lines.length; nextLineIndex++)
         {
             this.currentLineIndex = nextLineIndex; // save the current line
-            const line = lines[nextLineIndex];
+            const line = lines[nextLineIndex].stripLeft();
             if (line.startsWith("#"))
                 continue;
             auto lineParts = splitHandleQuoted(substitute(line));

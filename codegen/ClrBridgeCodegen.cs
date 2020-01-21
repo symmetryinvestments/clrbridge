@@ -16,56 +16,98 @@ static class ClrBridgeCodegen
 {
     static void Usage()
     {
-        Console.WriteLine("Usage: ClrBridgeCodegen.exe <DotNetAssembly> <OutputDir>");
+        Console.WriteLine("Usage: ClrBridgeCodegen.exe [options...] <DotNetAssembly> <OutputDir>");
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --shallow   Only generate for the given assembly, ignore assembly references");
     }
     public static Int32 Main(String[] args)
     {
-        if (args.Length != 2)
+        Boolean shallow = false;
+        List<String> nonOptionArgs = new List<String>();
+        for (UInt32 i = 0; i < args.Length; i++)
+        {
+            String arg = args[i];
+            if (!arg.StartsWith("-"))
+                nonOptionArgs.Add(arg);
+            else if (arg == "--shallow")
+                shallow = true;
+            else
+            {
+                Console.WriteLine("Error: unknown command-line option '{0}'", arg);
+                return 1;
+            }
+        }
+        if (nonOptionArgs.Count != 2)
         {
             Usage();
             return 1;
         }
-        String assemblyString = args[0];
-        String outputDir = args[1];
+        String assemblyString = nonOptionArgs[0];
+        String outputDir = nonOptionArgs[1];
         Console.WriteLine("assembly : {0}", assemblyString);
         Console.WriteLine("outputDir: {0}", outputDir);
+        Console.WriteLine("shallow  : {0}", shallow);
 
-        Assembly assembly;
-        if (assemblyString.StartsWith("file:"))
-            assembly = Assembly.LoadFile(Path.GetFullPath(assemblyString.Substring(5)));
-        else if (assemblyString.StartsWith("gac:"))
-            assembly = Assembly.Load(assemblyString.Substring(4));
-        else
+        Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap = new Dictionary<Assembly, ExtraAssemblyInfo>();
         {
-            Console.WriteLine("Error: assembly string must start with 'file:' or 'gac:' but got '{0}'", assemblyString);
-            return 1;
+            Assembly assembly;
+            if (assemblyString.StartsWith("file:"))
+                assembly = Assembly.LoadFile(Path.GetFullPath(assemblyString.Substring(5)));
+            else if (assemblyString.StartsWith("gac:"))
+                assembly = Assembly.Load(assemblyString.Substring(4));
+            else
+            {
+                Console.WriteLine("Error: assembly string must start with 'file:' or 'gac:' but got '{0}'", assemblyString);
+                return 1;
+            }
+            new Generator(sharedAssemblyMap, assembly, outputDir).GenerateModules(false);
         }
-        new Generator(assembly, outputDir).GenerateModule(assembly);
+        if (!shallow)
+        {
+            for (;;)
+            {
+                Int32 generatedCount = 0;
+                foreach (var pair in sharedAssemblyMap)
+                {
+                    if (pair.Value.state == AssemblyState.Initial)
+                    {
+                        new Generator(sharedAssemblyMap, pair.Key, outputDir).GenerateModules(false);
+                        Debug.Assert(pair.Value.state == AssemblyState.Generated);
+                        break; // break out of the loop because the map would have been modified
+                    }
+                    Debug.Assert(pair.Value.state == AssemblyState.Generated);
+                    generatedCount++;
+                }
+                if (generatedCount == sharedAssemblyMap.Count)
+                    break;
+            }
+            Console.WriteLine("all {0} assemblies have been generated", sharedAssemblyMap.Count);
+        }
         return 0;
     }
 }
 
 class ExtraReflection
 {
+    protected readonly Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap;
     protected readonly Assembly thisAssembly;
-    protected readonly Dictionary<Assembly, ExtraAssemblyInfo> assemblyInfoMap;
     protected readonly Dictionary<Type, ExtraTypeInfo> typeInfoMap;
-    public ExtraReflection(Assembly thisAssembly)
+    public ExtraReflection(Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly)
     {
+        this.sharedAssemblyMap = sharedAssemblyMap;
         this.thisAssembly = thisAssembly;
-        this.assemblyInfoMap = new Dictionary<Assembly,ExtraAssemblyInfo>();
         this.typeInfoMap = new Dictionary<Type,ExtraTypeInfo>();
     }
 
     public ExtraAssemblyInfo GetExtraAssemblyInfo(Assembly assembly)
     {
         ExtraAssemblyInfo info;
-        if (!assemblyInfoMap.TryGetValue(assembly, out info))
+        if (!sharedAssemblyMap.TryGetValue(assembly, out info))
         {
             info = new ExtraAssemblyInfo(
                 assembly.GetName().Name.Replace(".", "_")
             );
-            assemblyInfoMap[assembly] = info;
+            sharedAssemblyMap[assembly] = info;
         }
         return info;
     }
@@ -150,20 +192,72 @@ class Generator : ExtraReflection
     readonly String outputDir;
     readonly Dictionary<String,DModule> moduleMap;
     readonly String thisAssemblyPackageName; // cached version of GetExtraAssemblyInfo(thisAssembly).packageName
+    readonly String finalPackageDir;
+    readonly String tempPackageDir;
 
-    public Generator(Assembly thisAssembly, String outputDir)
-        : base(thisAssembly)
+    public Generator(Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, String outputDir)
+        : base(sharedAssemblyMap, thisAssembly)
     {
         this.outputDir = outputDir;
         this.moduleMap = new Dictionary<String,DModule>();
         this.thisAssemblyPackageName = GetExtraAssemblyInfo(thisAssembly).packageName;
+        this.finalPackageDir = Path.Combine(outputDir, this.thisAssemblyPackageName);
+        this.tempPackageDir = this.finalPackageDir + ".generating";
     }
 
-    public void GenerateModule(Assembly assembly)
+    String TryReadLastGeneratedHash()
     {
+        String hashFile = Path.Combine(finalPackageDir, "AssemblyHash");
+        if (!File.Exists(hashFile))
+            return null;
+        String lastGeneratedHash = File.ReadAllText(hashFile);
+        if (lastGeneratedHash.Length != 32)
+            throw new Exception(String.Format("assembly hash file should be 32 characters but got {0}", lastGeneratedHash.Length));
+        return lastGeneratedHash;
+    }
+
+    // returns: true if it is newly generated, false if it is already generated
+    public Boolean GenerateModules(bool force)
+    {
+        ExtraAssemblyInfo thisAssemblyInfo = GetExtraAssemblyInfo(thisAssembly);
+        Debug.Assert(thisAssemblyInfo.state == AssemblyState.Initial);
+        thisAssemblyInfo.state = AssemblyState.Generating;
+        Boolean result = GenerateModules2(force);
+        Debug.Assert(thisAssemblyInfo.state == AssemblyState.Generating);
+        thisAssemblyInfo.state = AssemblyState.Generated;
+        return result;
+    }
+
+    // returns: true if it is newly generated, false if it is already generated
+    Boolean GenerateModules2(bool force)
+    {
+        // hash the assembly, so we can check if it is already generated
+        // and then save it once we are done so it can be checked later
+        String assemblyHash;
+        using (FileStream stream = File.Open(thisAssembly.Location,  FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var md5 = System.Security.Cryptography.MD5.Create();
+            assemblyHash = HexString.FromBytes(md5.ComputeHash(stream));
+            Debug.Assert(assemblyHash.Length == 32);
+        }
+        if (!force)
+        {
+            String lastGeneratedHash = TryReadLastGeneratedHash();
+            if (lastGeneratedHash == assemblyHash)
+            {
+                Console.WriteLine("code already generated for assembly '{0}', hash={1}", thisAssembly, assemblyHash);
+                return false; // already generated
+            }
+        }
+        if (Directory.Exists(tempPackageDir))
+        {
+            Console.WriteLine("deleting old temporary package dir '{0}'", tempPackageDir);
+            Directory.Delete(tempPackageDir);
+        }
+
         // on the first pass we identify types that need to be defined inside other types
         // so that when we generate code, we can generate all the subtypes for each type
-        Type[] allTypes = assembly.GetTypes();
+        Type[] allTypes = thisAssembly.GetTypes();
         List<Type> rootTypes = new List<Type>();
         foreach (Type type in allTypes)
         {
@@ -180,8 +274,7 @@ class Generator : ExtraReflection
             DModule module;
             if (!moduleMap.TryGetValue(type.Namespace.NullToEmpty(), out module))
             {
-                String outputDFilename = Path.Combine(outputDir,
-                    Path.Combine(thisAssemblyPackageName, Util.NamespaceToModulePath(type.Namespace)));
+                String outputDFilename = Path.Combine(tempPackageDir, Util.NamespaceToModulePath(type.Namespace));
                 Console.WriteLine("[DEBUG] NewDModule '{0}'", outputDFilename);
                 Directory.CreateDirectory(Path.GetDirectoryName(outputDFilename));
                 StreamWriter writer = new StreamWriter(new FileStream(outputDFilename, FileMode.Create, FileAccess.Write, FileShare.Read));
@@ -207,6 +300,13 @@ class Generator : ExtraReflection
         {
             module.Close();
         }
+
+        String assemblyHashFile = Path.Combine(tempPackageDir, "AssemblyHash");
+        Console.WriteLine("writing assembly hash file '{0}' with '{1}'", assemblyHashFile, assemblyHash);
+        File.WriteAllText(assemblyHashFile, assemblyHash);
+        Console.WriteLine("moving temporary to final package dir '{0}'", finalPackageDir);
+        Directory.Move(tempPackageDir, finalPackageDir);
+        return true; // newly generated
     }
 
     void GenerateType(DModule module, Type type)
@@ -782,12 +882,21 @@ class DModule
     }
 }
 
+enum AssemblyState
+{
+    Initial,
+    Generating,
+    Generated,
+}
+
 class ExtraAssemblyInfo
 {
     public readonly string packageName;
+    public AssemblyState state;
     public ExtraAssemblyInfo(string packageName)
     {
         this.packageName = packageName;
+        this.state = AssemblyState.Initial;
     }
 }
 
@@ -881,5 +990,29 @@ static class Extensions
             return 0;
         Type[] genericArgs = type.GetGenericArguments();
         return (genericArgs == null) ? (UInt16)0 : genericArgs.Length.ToUInt16();
+    }
+}
+
+static class HexString
+{
+    public static String FromBytes(Byte[] array)
+    {
+        StringBuilder s = new StringBuilder(array.Length * 2);
+        foreach (Byte b in array)
+        {
+            s.AppendFormat("{0:x2}", b);
+        }
+        return s.ToString();
+    }
+    public static Byte[] ToBytes(String s)
+    {
+        if (s.Length % 2 != 0) throw new Exception("hex string length must be divisible by 2");
+        Byte[] bytes = new Byte[s.Length / 2];
+        for (Int32 i = 0; i < s.Length; i += 2)
+        {
+            // TODO: creating a substring is probably overkill
+            bytes[i / 2] = Convert.ToByte(s.Substring(i, 2), 16);
+        }
+        return bytes;
     }
 }
