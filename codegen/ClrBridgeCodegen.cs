@@ -77,7 +77,7 @@ class ExtraReflection
             ExtraAssemblyInfo assemblyInfo = GetExtraAssemblyInfo(type.Assembly);
             String moduleName = type.Namespace.IsEmpty() ? assemblyInfo.packageName :
                 String.Format("{0}.{1}", assemblyInfo.packageName, type.Namespace.ToDQualifiedIdentifier());
-            String moduleRelativeName = type.Name.ToDIdentifier();
+            String moduleRelativeName = type.GetUnqualifiedTypeNameForD();
             if (type.DeclaringType != null)
                 moduleRelativeName = String.Format("{0}.{1}", GetExtraTypeInfo(type.DeclaringType).moduleRelativeName, moduleRelativeName);
             info = new ExtraTypeInfo(moduleName, moduleRelativeName);
@@ -97,6 +97,17 @@ class ExtraReflection
     // namespaceContext is the C# Namespace for which code is currently being generated
     public String ToDEquivalentType(String namespaceContext, Type type)
     {
+        // skip these types for now
+        if (type.IsByRef)
+        {
+            return String.Format("__d.clr.DotNetObject/*{0}*/", type.FullName);
+        /*
+            Type elementType = type.GetElementType();
+            Debug.Assert(elementType != type);
+            return "ref " + ToDEquivalentType(namespaceContext, elementType);
+            */
+        }
+
         if (type.IsGenericParameter)
             return type.Name;
 
@@ -117,23 +128,20 @@ class ExtraReflection
         if (type == typeof(Decimal)) return "__d.clr.Decimal";
         if (type == typeof(Object))  return "__d.clr.DotNetObject";
 
-        // non primitive types
-
         // TODO: do this for all types, not just enums
         ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
         // we need to include the qualifier even on types in the same module so their names don't conflict
         // with other symbols in this same module (like methods/variables)
         String qualifier = (type.Assembly == thisAssembly && namespaceContext == type.Namespace) ? typeInfo.moduleName :
             String.Format("__d.clrbridge.from!\"{0}\"", typeInfo.moduleName);
+        // workaround issue in mscorlib with referencing the SecurityZone type
         if (type.IsEnum)
         {
-            // workaround issue in mscorlib with referencing the SecurityZone type
             if (type.Name == "SecurityZone") return "__d.clr.Enum!int";
             return String.Format("{0}.{1}", qualifier, typeInfo.moduleRelativeName);
         }
 
-        //return "__d.clr.DotNetObject";
-        return String.Format("__d.clr.DotNetObject /*{0}*/", type.FullName);
+        return String.Format("__d.clr.DotNetObject/*{0}*/", type.FullName);
     }
 }
 
@@ -194,6 +202,7 @@ class Generator : ExtraReflection
             }
             GenerateType(module, type);
         }
+
         foreach (DModule module in moduleMap.Values)
         {
             module.Close();
@@ -211,21 +220,11 @@ class Generator : ExtraReflection
             }
             else
             {
-                if (type.IsGenericType)
-                {
-                    Message(module, "skipping type {0} because generics structs aren't implemented", type.Name);
-                    return;
-                }
                 GenerateStruct(module, type);
             }
         }
         else if (type.IsInterface)
         {
-            if (type.IsGenericType)
-            {
-                Message(module, "skipping type {0} because generics interfaces aren't implemented", type.Name);
-                return;
-            }
             GenerateInterface(module, type);
         }
         else
@@ -233,11 +232,6 @@ class Generator : ExtraReflection
             Debug.Assert(type.IsClass);
             if (typeof(Delegate).IsAssignableFrom(type))
             {
-                if (type.IsGenericType)
-                {
-                    Message(module, "skipping type {0} because generics delegates aren't implemented", type.Name);
-                    return;
-                }
                 GenerateDelegate(module, type);
             }
             else
@@ -257,7 +251,7 @@ class Generator : ExtraReflection
     void GenerateEnum(DModule module, Type type)
     {
         const String EnumValueFieldName = "__value__";
-        module.WriteLine("/* .NET Enum */ static struct {0}", Util.GetUnqualifiedTypeName(type));
+        module.WriteLine("/* .NET Enum */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
         module.WriteLine("{");
         Type[] genericArgs = type.GetGenericArguments();
         Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
@@ -304,9 +298,11 @@ class Generator : ExtraReflection
 
     void GenerateStruct(DModule module, Type type)
     {
-        module.WriteLine("static struct {0}", Util.GetUnqualifiedTypeName(type));
-        module.WriteLine("{");
+        module.Write("/* .NET struct */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
+        GenerateGenericParameters(module, genericArgs, type.DeclaringType.GetGenericArgCount());
+        module.WriteLine();
+        module.WriteLine("{");
         GenerateMetadata(module, type, genericArgs);
         GenerateFields(module, type);
         GenerateMethods(module, type);
@@ -315,7 +311,10 @@ class Generator : ExtraReflection
     }
     void GenerateInterface(DModule module, Type type)
     {
-        module.WriteLine("interface {0}", Util.GetUnqualifiedTypeName(type));
+        module.Write("/* .NET interface */ struct {0}", Util.GetUnqualifiedTypeNameForD(type));
+        Type[] genericArgs = type.GetGenericArguments();
+        GenerateGenericParameters(module, genericArgs, type.DeclaringType.GetGenericArgCount());
+        module.WriteLine();
         module.WriteLine("{");
         Debug.Assert(type.GetFields().Length == 0);
         //??? GenerateMetadata(module, type);
@@ -325,7 +324,7 @@ class Generator : ExtraReflection
     }
     void GenerateDelegate(DModule module, Type type)
     {
-        module.Write("/* .NET Delegate */ static struct {0}", Util.GetUnqualifiedTypeName(type));
+        module.Write("/* .NET delegate */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(module, genericArgs, type.DeclaringType.GetGenericArgCount());
         module.WriteLine();
@@ -335,7 +334,7 @@ class Generator : ExtraReflection
     }
     void GenerateClass(DModule module, Type type)
     {
-        module.Write("/* .NET class */ static struct {0}", Util.GetUnqualifiedTypeName(type));
+        module.Write("/* .NET class */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(module, genericArgs, type.DeclaringType.GetGenericArgCount());
         module.WriteLine();
@@ -587,7 +586,7 @@ class Generator : ExtraReflection
                     if (boxType != null)
                     {
                         module.WriteLine("        auto  __param{0}__ = __d.globalClrBridge.box!\"{1}\"({2}); // actual type is {3}",
-                            paramIndex, boxType, Util.ToDIdentifier(parameter.Name), Util.GetQualifiedTypeName(parameter.ParameterType));
+                            paramIndex, boxType, Util.ToDIdentifier(parameter.Name), parameter.ParameterType.FullName);
                         module.WriteLine("        scope (exit) __d.globalClrBridge.release(__param{0}__);", paramIndex);
                     }
                 }
@@ -606,7 +605,11 @@ class Generator : ExtraReflection
                 string prefix = " ";
                 foreach (ParameterInfo parameter in parameters)
                 {
-                    if (parameter.ParameterType.IsEnum || TryGetBoxType(parameter.ParameterType) != null)
+                    if (parameter.ParameterType.IsArray ||
+                        parameter.ParameterType.IsByRef ||
+                        parameter.ParameterType.IsPointer)
+                        module.WriteLine("            {0}__d.clr.DotNetObject.nullObject", prefix);
+                    else if (parameter.ParameterType.IsEnum || TryGetBoxType(parameter.ParameterType) != null)
                         module.WriteLine("            {0}__param{1}__", prefix, paramIndex);
                     else
                         module.WriteLine("            {0}{1}", prefix, Util.ToDIdentifier(parameter.Name));
@@ -665,6 +668,13 @@ class Generator : ExtraReflection
 
     static String TryGetBoxType(Type type)
     {
+        if (type.IsByRef)
+        {
+            Type elementType = type.GetElementType();
+            Debug.Assert(elementType != type);
+            return TryGetBoxType(elementType);
+        }
+
         // TODO: Handle type.IsGenericParameter
         //       will need to use D reflection to determine at D compile-time whether or not it's
         //       a type that needs to be boxed
@@ -839,13 +849,7 @@ static class Util
             .Replace("`", "_")
             .Replace("+", "_");
     }
-    // rename types that conflict with standard D types
-    public static String GetQualifiedTypeName(Type type)
-    {
-        String prefix = (type.DeclaringType == null) ? "" : GetQualifiedTypeName(type.DeclaringType) + ".";
-        return prefix + GetUnqualifiedTypeName(type);
-    }
-    public static String GetUnqualifiedTypeName(Type type)
+    public static String GetUnqualifiedTypeNameForD(this Type type)
     {
         if (type.Name == "Object")
             return "DotNetObject";
@@ -853,13 +857,7 @@ static class Util
             return "DotNetException";
         if (type.Name == "TypeInfo")
             return "DotNetTypeInfo";
-        return type.Name
-            .Replace("$", "_")
-            .Replace("<", "_")
-            .Replace(">", "_")
-            .Replace("=", "_")
-            .Replace("`", "_")
-            .Replace("+", "_");
+        return ToDIdentifier(type.Name);
     }
 }
 

@@ -18,11 +18,11 @@ rund -g noCodegenExample.d
 # this tool will take an assembly and generate D code to easily call into it
 rund minish.d buildClrBridgeCodegen dotnetCompiler=${dotnetCompiler}
 
-# run unit tests
-rund minish.d runUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
-
 # invoke ClrBridgeCodegen.exe to generate D wrapper code for common .NET libraries
 rund minish.d generateDWrappers dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
+
+# run unit tests
+rund minish.d runUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
 # execute the example that uses the code from generateDWrappers
 rund example.d
