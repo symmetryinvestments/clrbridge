@@ -132,16 +132,18 @@ class ExtraReflection
     public String ToDMarshalType(String namespaceContext, Type type)
     {
         if (type == typeof(Boolean)) return "ushort";
-        return ToDEquivalentType(namespaceContext, type);
+        String importQualifier;
+        return ToDEquivalentType(namespaceContext, type, out importQualifier);
     }
 
     // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?
     // namespaceContext is the C# Namespace for which code is currently being generated
-    public String ToDEquivalentType(String namespaceContext, Type type)
+    public String ToDEquivalentType(String namespaceContext, Type type, out String importQualifier)
     {
         // skip these types for now
         if (type.IsByRef)
         {
+            importQualifier = ""; // no import necessary
             return String.Format("__d.clr.DotNetObject/*{0}*/", type.FullName);
         /*
             Type elementType = type.GetElementType();
@@ -151,41 +153,65 @@ class ExtraReflection
         }
 
         if (type.IsGenericParameter)
+        {
+            importQualifier = ""; // no import necessary
             return type.Name;
+        }
 
         Debug.Assert(type != typeof(void)); // not handled yet
-        if (type == typeof(Boolean)) return "bool";
-        if (type == typeof(Byte))    return "ubyte";
-        if (type == typeof(SByte))   return "byte";
-        if (type == typeof(UInt16))  return "ushort";
-        if (type == typeof(Int16))   return "short";
-        if (type == typeof(UInt32))  return "uint";
-        if (type == typeof(Int32))   return "int";
-        if (type == typeof(UInt64))  return "ulong";
-        if (type == typeof(Int64))   return "long";
-        if (type == typeof(Char))    return "char";
-        if (type == typeof(String))  return "__d.CString";
-        if (type == typeof(Single))  return "float";
-        if (type == typeof(Double))  return "double";
-        if (type == typeof(Decimal)) return "__d.clr.Decimal";
-        if (type == typeof(Object))  return "__d.clr.DotNetObject";
+        if (type == typeof(Boolean)) { importQualifier = ""; return "bool"; }
+        if (type == typeof(Byte))    { importQualifier = ""; return "ubyte"; }
+        if (type == typeof(SByte))   { importQualifier = ""; return "byte"; }
+        if (type == typeof(UInt16))  { importQualifier = ""; return "ushort"; }
+        if (type == typeof(Int16))   { importQualifier = ""; return "short"; }
+        if (type == typeof(UInt32))  { importQualifier = ""; return "uint"; }
+        if (type == typeof(Int32))   { importQualifier = ""; return "int"; }
+        if (type == typeof(UInt64))  { importQualifier = ""; return "ulong"; }
+        if (type == typeof(Int64))   { importQualifier = ""; return "long"; }
+        if (type == typeof(Char))    { importQualifier = ""; return "char"; }
+        if (type == typeof(String))  { importQualifier = ""; return "__d.CString"; }
+        if (type == typeof(Single))  { importQualifier = ""; return "float"; }
+        if (type == typeof(Double))  { importQualifier = ""; return "double"; }
+        if (type == typeof(Decimal)) { importQualifier = ""; return "__d.clr.Decimal"; }
+        if (type == typeof(Object))  { importQualifier = ""; return "__d.clr.DotNetObject"; }
 
         // TODO: do this for all types, not just enums
-        ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
         // we need to include the qualifier even on types in the same module so their names don't conflict
         // with other symbols in this same module (like methods/variables)
-        String qualifier = (type.Assembly == thisAssembly && namespaceContext == type.Namespace) ? "" :
-            String.Format("__d.clrbridge.from!\"{0}\"", typeInfo.moduleName);
         Boolean useRealType = false;
         if (type.IsEnum)
         {
             // workaround issue in mscorlib with referencing the SecurityZone type
-            if (type.Name == "SecurityZone") return "__d.clr.Enum!int";
+            if (type.Name == "SecurityZone") { importQualifier = ""; return "__d.clr.Enum!int"; }
+            useRealType = true;
+        }
+        else if (
+               !type.IsGenericType // skip generic types for now
+            && !type.IsArray // skip arrays for now
+            && !(typeof(Delegate).IsAssignableFrom(type)) // skip delegates for now
+            && type.IsClass // skip value types for now
+        )
+        {
             useRealType = true;
         }
         if (useRealType)
-            return String.Format("{0}.{1}", qualifier, typeInfo.moduleRelativeName);
+        {
+            ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
+            if (type.Assembly == thisAssembly && namespaceContext == type.Namespace)
+            {
+                importQualifier = "";
+            }
+            else
+            {
+                // from import idiom does not work with circular references :(
+                //importQualifier = String.Format("__d.clrbridge.from!\"{0}\"", typeInfo.moduleName);
+                importQualifier = typeInfo.moduleName;
+            }
+            return String.Format("{0}.{1}", importQualifier, typeInfo.moduleRelativeName);
+        }
 
+        // references to this type are temporarily disabled, so for now we just treat it as a generic Object
+        importQualifier = "";
         return String.Format("__d.clr.DotNetObject/*{0}*/", type.FullName);
     }
 }
@@ -301,6 +327,17 @@ class Generator : ExtraReflection
 
         foreach (DModule module in moduleMap.Values)
         {
+            HashSet<String> imports = new HashSet<String>();
+            foreach (var pair in module.typeRefMap)
+            {
+                if (!pair.Value.importQualifier.IsEmpty() && imports.Add(pair.Value.importQualifier))
+                {
+                    // static imports are not lazy and make it take WAAAAY to long to compile
+                    // not sure how to solve this one
+                    // the from import idiom does not seem to work with circular references
+                    module.WriteLine("static import {0};", pair.Value.importQualifier);
+                }
+            }
             module.Close();
         }
 
@@ -442,7 +479,7 @@ class Generator : ExtraReflection
         GenerateGenericParameters(module, genericArgs, type.DeclaringType.GetGenericArgCount());
         module.WriteLine();
         module.WriteLine("{");
-        String baseTypeForD = (type.BaseType == null) ? "__d.clr.DotNetObject" : module.TypeReferenceForD(type.BaseType);
+        String baseTypeForD = (type.BaseType == null) ? "__d.clr.DotNetObject" : module.TypeReferenceForD(this, type.BaseType);
         module.WriteLine("    mixin __d.clrbridge.DotNetObjectMixin!q{{{0}}};", baseTypeForD);
 
         // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
@@ -466,7 +503,7 @@ class Generator : ExtraReflection
         if (type.IsGenericParameter)
         {
             Debug.Assert(genericArgs.IsEmpty(), "you can have a generic parameter type with generic args??");
-            module.Write("__d.clrbridge.GetTypeSpec!({0})", ToDEquivalentType(module.dotnetNamespace, type));
+            module.Write("__d.clrbridge.GetTypeSpec!({0})", module.TypeReferenceForD(this, type));
             return;
         }
         module.WriteLine("__d.clr.TypeSpec(");
@@ -478,7 +515,7 @@ class Generator : ExtraReflection
             module.WriteLine();
             foreach (Type genericArg in genericArgs)
             {
-                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDEquivalentType(module.dotnetNamespace, genericArg));
+                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, module.TypeReferenceForD(this, genericArg));
             }
             module.Write("{0}])", linePrefix);
         }
@@ -494,7 +531,7 @@ class Generator : ExtraReflection
             module.WriteLine("[");
             foreach (Type genericArg in genericArgs)
             {
-                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, ToDEquivalentType(module.dotnetNamespace, genericArg));
+                module.WriteLine("{0}    __d.clrbridge.GetTypeSpec!({1}),", linePrefix, module.TypeReferenceForD(this, genericArg));
             }
             module.Write("{0}]", linePrefix);
         }
@@ -536,7 +573,7 @@ class Generator : ExtraReflection
             // fields are represented as D @property functions
             // TODO: generate the setter as well
             module.WriteLine("    @property {0} {1}() const {{ assert(0, \"fields not implemented yet\"); }}; // {2} {3}",
-                ToDEquivalentType(module.dotnetNamespace, fieldType),
+                module.TypeReferenceForD(this, fieldType),
                 field.Name.ToDIdentifier(),
                 field.FieldType, field.FieldType.AssemblyQualifiedName);
         }
@@ -579,7 +616,7 @@ class Generator : ExtraReflection
             if (method.ReturnType == typeof(void))
                 module.Write(" void");
             else
-                module.Write(" {0}", ToDEquivalentType(module.dotnetNamespace, method.ReturnType));
+                module.Write(" {0}", module.TypeReferenceForD(this, method.ReturnType));
             module.Write(" {0}", Util.ToDIdentifier(method.Name));
             ParameterInfo[] parameters = method.GetParameters();
             GenerateGenericParameters(module, genericArguments, type.GetGenericArgCount());
@@ -622,7 +659,7 @@ class Generator : ExtraReflection
             string prefix = "";
             foreach (ParameterInfo parameter in parameters)
             {
-                module.Write("{0}{1} {2}", prefix, ToDEquivalentType(module.dotnetNamespace, parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
+                module.Write("{0}{1} {2}", prefix, module.TypeReferenceForD(this, parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
                 prefix = ", ";
             }
         }
@@ -825,9 +862,11 @@ class TabStringPool
 // Data for a type reference for a particular module
 struct ModuleTypeRef
 {
+    public readonly String importQualifier;
     public readonly String dTypeString;
-    public ModuleTypeRef(String dTypeString)
+    public ModuleTypeRef(String importQualifier, String dTypeString)
     {
+        this.importQualifier = importQualifier;
         this.dTypeString = dTypeString;
     }
 }
@@ -841,7 +880,11 @@ class DModule
     private readonly TabStringPool tabPool;
     private Boolean atMiddleOfLine;
     private UInt16 depth;
-    private readonly Dictionary<Type,ModuleTypeRef> typeRefMap;
+    // the typeRefMap is used to store all the types that have been referenced in the module
+    // this allows us to generate a list of imports once we are done
+    // note that this would not be necessary if we were using the "from" import idiom, but the D
+    // compiler seems to have trouble with that idiom when there are circular references between modules
+    public readonly Dictionary<Type,ModuleTypeRef> typeRefMap;
     public DModule(Assembly assembly, String dotnetNamespace, String fullName, StreamWriter writer)
     {
         this.assembly = assembly;
@@ -858,7 +901,9 @@ class DModule
         ModuleTypeRef typeRef;
         if (!typeRefMap.TryGetValue(type, out typeRef))
         {
-            typeRef = new ModuleTypeRef(extraReflection.ToDEquivalentType(dotnetNamespace, type));
+            String importQualifier;
+            String dTypeString = extraReflection.ToDEquivalentType(dotnetNamespace, type, out importQualifier);
+            typeRef = new ModuleTypeRef(importQualifier, dTypeString);
             typeRefMap[type] = typeRef;
         }
         return typeRef.dTypeString;
