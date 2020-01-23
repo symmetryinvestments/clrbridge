@@ -174,14 +174,17 @@ class ExtraReflection
         ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
         // we need to include the qualifier even on types in the same module so their names don't conflict
         // with other symbols in this same module (like methods/variables)
-        String qualifier = (type.Assembly == thisAssembly && namespaceContext == type.Namespace) ? typeInfo.moduleName :
+        String qualifier = (type.Assembly == thisAssembly && namespaceContext == type.Namespace) ? "" :
             String.Format("__d.clrbridge.from!\"{0}\"", typeInfo.moduleName);
-        // workaround issue in mscorlib with referencing the SecurityZone type
+        Boolean useRealType = false;
         if (type.IsEnum)
         {
+            // workaround issue in mscorlib with referencing the SecurityZone type
             if (type.Name == "SecurityZone") return "__d.clr.Enum!int";
-            return String.Format("{0}.{1}", qualifier, typeInfo.moduleRelativeName);
+            useRealType = true;
         }
+        if (useRealType)
+            return String.Format("{0}.{1}", qualifier, typeInfo.moduleRelativeName);
 
         return String.Format("__d.clr.DotNetObject/*{0}*/", type.FullName);
     }
@@ -279,7 +282,7 @@ class Generator : ExtraReflection
                 Directory.CreateDirectory(Path.GetDirectoryName(outputDFilename));
                 StreamWriter writer = new StreamWriter(new FileStream(outputDFilename, FileMode.Create, FileAccess.Write, FileShare.Read));
                 ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
-                module = new DModule(type.Namespace, typeInfo.moduleName, writer);
+                module = new DModule(thisAssembly, type.Namespace, typeInfo.moduleName, writer);
                 writer.WriteLine("module {0};", typeInfo.moduleName);
                 writer.WriteLine("");
                 writer.WriteLine("// Keep D Symbols inside the __d struct to prevent symbol conflicts");
@@ -351,12 +354,12 @@ class Generator : ExtraReflection
     void GenerateEnum(DModule module, Type type)
     {
         const String EnumValueFieldName = "__value__";
-        module.WriteLine("/* .NET Enum */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
+        module.WriteLine("/* .NET enum */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
         module.WriteLine("{");
         Type[] genericArgs = type.GetGenericArguments();
         Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
         GenerateMetadata(module, type, genericArgs);
-        String baseTypeDName = ToDEquivalentType(module.dotnetNamespace, Enum.GetUnderlyingType(type)); // TODO: Marshal Type instead???
+        String baseTypeDName = module.TypeReferenceForD(this, Enum.GetUnderlyingType(type)); // TODO: Marshal Type instead???
         module.WriteLine("    __d.clr.Enum!{0} {1};", baseTypeDName, EnumValueFieldName);
         module.WriteLine("    alias {0} this;", EnumValueFieldName);
         module.WriteLine("    enum : typeof(this)", baseTypeDName);
@@ -439,8 +442,9 @@ class Generator : ExtraReflection
         GenerateGenericParameters(module, genericArgs, type.DeclaringType.GetGenericArgCount());
         module.WriteLine();
         module.WriteLine("{");
-        module.WriteLine("    mixin __d.clrbridge.DotNetObjectMixin!q{{{0}}};",
-            (type.BaseType == null) ? "__d.clr.DotNetObject" : ToDEquivalentType(module.dotnetNamespace, type.BaseType));
+        String baseTypeForD = (type.BaseType == null) ? "__d.clr.DotNetObject" : module.TypeReferenceForD(type.BaseType);
+        module.WriteLine("    mixin __d.clrbridge.DotNetObjectMixin!q{{{0}}};", baseTypeForD);
+
         // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
         // get the .NET name for this type
         GenerateMetadata(module, type, genericArgs);
@@ -818,21 +822,46 @@ class TabStringPool
     }
 }
 
+// Data for a type reference for a particular module
+struct ModuleTypeRef
+{
+    public readonly String dTypeString;
+    public ModuleTypeRef(String dTypeString)
+    {
+        this.dTypeString = dTypeString;
+    }
+}
+
 class DModule
 {
+    public readonly Assembly assembly;
     public readonly String dotnetNamespace;
     public readonly String fullName;
     private readonly StreamWriter writer;
     private readonly TabStringPool tabPool;
     private Boolean atMiddleOfLine;
     private UInt16 depth;
-    public DModule(String dotnetNamespace, String fullName, StreamWriter writer)
+    private readonly Dictionary<Type,ModuleTypeRef> typeRefMap;
+    public DModule(Assembly assembly, String dotnetNamespace, String fullName, StreamWriter writer)
     {
+        this.assembly = assembly;
         this.dotnetNamespace = dotnetNamespace;
         this.fullName = fullName;
         this.writer = writer;
         this.tabPool = new TabStringPool();
         this.atMiddleOfLine = false;
+        this.typeRefMap = new Dictionary<Type,ModuleTypeRef>();
+    }
+    // saves the type as being referenced and returns the D code to reference the type
+    public String TypeReferenceForD(ExtraReflection extraReflection, Type type)
+    {
+        ModuleTypeRef typeRef;
+        if (!typeRefMap.TryGetValue(type, out typeRef))
+        {
+            typeRef = new ModuleTypeRef(extraReflection.ToDEquivalentType(dotnetNamespace, type));
+            typeRefMap[type] = typeRef;
+        }
+        return typeRef.dTypeString;
     }
     public void IncreaseDepth() { this.depth += 1; }
     public void DecreaseDepth() { this.depth -= 1; }

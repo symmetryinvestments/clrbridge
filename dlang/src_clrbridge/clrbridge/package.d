@@ -21,8 +21,8 @@ mixin template DotnetPrimitiveWrappers(string funcName)
 
 mixin template DotNetObjectMixin(string base)
 {
-    mixin(base ~ " baseObject;");
-    alias baseObject this;
+    mixin(base ~ " __base__;");
+    alias __base__ this;
     static auto nullObject() { return typeof(this)(mixin(base ~ ".nullObject")); }
 }
 struct Assembly     { mixin DotNetObjectMixin!"DotNetObject"; }
