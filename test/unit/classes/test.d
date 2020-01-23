@@ -13,9 +13,18 @@ void test()
     {
         const c = Int32Class.New();
         scope (exit) globalClrBridge.release(c);
-        c.SetValue(100);
-        writefln("c.GetValue() = %s", c.GetValue());
-        // instance methods not implemented
-        //assert(100 == c.GetValue());
+        foreach (int value; [100, -123435, 0x8301])
+        {
+            c.SetValue(value);
+            int actual = c.GetValue();
+            writefln("expecting value %s", actual);
+            assert(value == actual);
+            // fields not implemented yet
+            //assert(c.value == value);
+            //c.value = 0;
+            //assert(c.value == 0);
+            //c.value = value;
+            //assert(c.value == value);
+        }
     }
 }

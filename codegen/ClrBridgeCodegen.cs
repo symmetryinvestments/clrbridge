@@ -439,8 +439,8 @@ class Generator : ExtraReflection
         GenerateGenericParameters(module, genericArgs, type.DeclaringType.GetGenericArgCount());
         module.WriteLine();
         module.WriteLine("{");
-        module.WriteLine("    // TODO: mixin the base class rather than DotNetObject");
-        module.WriteLine("    mixin __d.clrbridge.DotNetObjectMixin!\"__d.clr.DotNetObject\";");
+        module.WriteLine("    mixin __d.clrbridge.DotNetObjectMixin!q{{{0}}};",
+            (type.BaseType == null) ? "__d.clr.DotNetObject" : ToDEquivalentType(module.dotnetNamespace, type.BaseType));
         // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
         // get the .NET name for this type
         GenerateMetadata(module, type, genericArgs);
@@ -530,7 +530,8 @@ class Generator : ExtraReflection
         {
             Type fieldType = field.FieldType;
             // fields are represented as D @property functions
-            module.WriteLine("    @property {0} {1}() {{ return typeof(return).init; }}; // {2} {3}",
+            // TODO: generate the setter as well
+            module.WriteLine("    @property {0} {1}() const {{ assert(0, \"fields not implemented yet\"); }}; // {2} {3}",
                 ToDEquivalentType(module.dotnetNamespace, fieldType),
                 field.Name.ToDIdentifier(),
                 field.FieldType, field.FieldType.AssemblyQualifiedName);
@@ -627,14 +628,6 @@ class Generator : ExtraReflection
     void GenerateMethodBody(DModule module, Type type,
         MethodBase method, Type returnType, ParameterInfo[] parameters)
     {
-        // skip non-static methods for now, they just take too long right now
-        if (!method.IsStatic && !method.IsConstructor)
-        {
-            if (returnType != typeof(void))
-                module.WriteLine("        return typeof(return).init;");
-            return;
-        }
-
         // TODO: we may want to cache some of this stuff, but for now we'll just get it every time
         Type[] genericArgs = method.IsGenericMethod ? method.GetGenericArguments() : null;
         module.WriteLine("        enum __method_spec__ = __d.clrbridge.MethodSpec(__clrmetadata.typeSpec, \"{0}\",", method.Name);

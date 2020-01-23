@@ -4,6 +4,8 @@ import fields;
 void test()
 {
     ClassWithFields c;
-    writefln("uint32Field = %s", c.uint32Field);
-    writefln("stringField = %s", c.stringField);
+    // field subs implemented but don't do anyting yet
+    { const f = &c.uint32Field; }
+    { const f = &c.stringField; }
+    // TODO: call the fields and test them
 }
