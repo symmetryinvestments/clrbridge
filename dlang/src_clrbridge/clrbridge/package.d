@@ -25,6 +25,11 @@ mixin template DotNetObjectMixin(string base)
     alias __base__ this;
     static auto nullObject() { return typeof(this)(mixin(base ~ ".nullObject")); }
 }
+
+// A temporary type in order to make sure overloads work during initial development
+// even if all types are not supported yet
+struct UnsupportedType(string realTypeName) { mixin DotNetObjectMixin!"DotNetObject"; }
+
 struct Assembly     { mixin DotNetObjectMixin!"DotNetObject"; }
 struct Type         { mixin DotNetObjectMixin!"DotNetObject"; }
 struct ConstructorInfo { mixin DotNetObjectMixin!"DotNetObject"; }

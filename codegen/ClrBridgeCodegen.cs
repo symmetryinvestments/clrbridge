@@ -144,7 +144,7 @@ class ExtraReflection
         if (type.IsByRef)
         {
             importQualifier = ""; // no import necessary
-            return String.Format("__d.clr.DotNetObject/*{0}*/", type.FullName);
+            return type.UnsupportedTypeRef();
         /*
             Type elementType = type.GetElementType();
             Debug.Assert(elementType != type);
@@ -212,7 +212,7 @@ class ExtraReflection
 
         // references to this type are temporarily disabled, so for now we just treat it as a generic Object
         importQualifier = "";
-        return String.Format("__d.clr.DotNetObject/*{0}*/", type.FullName);
+        return type.UnsupportedTypeRef();
     }
 }
 
@@ -1112,13 +1112,18 @@ static class Util
     }
     public static String GetUnqualifiedTypeNameForD(this Type type)
     {
+        // these names need to be changed to avoid symbol conflicts with primitive types in D
         if (type.Name == "Object")
-            return "DotNetObject";
+            return "MscorlibObject";
         if (type.Name == "Exception")
-            return "DotNetException";
+            return "MscorlibException";
         if (type.Name == "TypeInfo")
-            return "DotNetTypeInfo";
+            return "MscorlibTypeInfo";
         return ToDIdentifier(type.Name);
+    }
+    public static String UnsupportedTypeRef(this Type type)
+    {
+        return String.Format("__d.clrbridge.UnsupportedType!q{{{0}}}", type.ToString().Replace("`", "_"));
     }
 }
 
