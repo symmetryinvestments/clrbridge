@@ -38,7 +38,7 @@ int main(string[] args)
         return 1;
     }
     auto lines = File(scriptFilename, "r").byLineCopy.array;
-    return Interpreter(scriptFilename, lines, 0).runScript(varsFromCommandLine);
+    return Interpreter(scriptFilename, lines).runScript(varsFromCommandLine);
 }
 
 class Scope
@@ -63,17 +63,15 @@ struct Interpreter
 {
     string scriptFilename;
     string[] lines;
-    size_t currentLineIndex;
     Scope currentScope;
-    bool disabled;
 
-    void errorExit(string msg)
+    void errorExit(size_t lineIndex, string msg)
     {
-        writefln("%s(%s) ERROR: %s", scriptFilename, currentLineIndex + 1, msg);
+        writefln("%s(%s) ERROR: %s", scriptFilename, lineIndex + 1, msg);
         exit(1);
     }
 
-    string substitute(const(char)[] str)
+    string substitute(size_t lineIndex, const(char)[] str)
     {
         auto result = appender!(char[])();
         for (int i = 0; i < str.length; i++)
@@ -81,16 +79,16 @@ struct Interpreter
             if (str[i] == '$')
             {
                 i++;
-                if (i >= str.length || str[i] != '{') errorExit("$ not followed by '{'");
+                if (i >= str.length || str[i] != '{') errorExit(lineIndex, "$ not followed by '{'");
                 const start = i + 1;
                 do
                 {
                     i++;
-                    if (i >= str.length) errorExit("'${' not terminated with '}'");
+                    if (i >= str.length) errorExit(lineIndex, "'${' not terminated with '}'");
                 } while (str[i] != '}');
                 const varName = str[start .. i];
                 const value = currentScope.get(varName);
-                if (value is null) errorExit(format("unknown variable ${%s}", varName));
+                if (value is null) errorExit(lineIndex, format("unknown variable ${%s}", varName));
                 result.put(value);
             }
             else
@@ -101,67 +99,81 @@ struct Interpreter
         return cast(string)result.data;
     }
 
-    string[] splitHandleQuoted(string s)
+    string[] splitHandleQuoted(size_t lineIndex, string s)
     {
         const quoteIndex = s.indexOf(`"`);
         if (quoteIndex == -1)
             return s.split();
         auto nextQuoteIndex = s[quoteIndex+1 .. $].indexOf(`"`);
         if (nextQuoteIndex == -1)
-            errorExit("got an open quote without a closing quote");
+            errorExit(lineIndex, "got an open quote without a closing quote");
         nextQuoteIndex += quoteIndex + 1;
         return s[0 .. quoteIndex].split()
             ~ [s[quoteIndex+1 .. nextQuoteIndex]]
-            ~ splitHandleQuoted(s[nextQuoteIndex + 1 .. $]);
+            ~ splitHandleQuoted(lineIndex, s[nextQuoteIndex + 1 .. $]);
     }
 
     int runScript(string[string] commandLineVars)
     {
         currentScope = new Scope(null, commandLineVars);
-        runLines(0, false);
-        if (currentLineIndex != lines.length)
-            errorExit(format("too many '@end' directives (expected %s got %s)", lines.length, currentLineIndex));
+        const endLineIndex = runLines(0, true);
+        if (endLineIndex != lines.length)
+            errorExit(endLineIndex, "unexpected '@end' directive");
         assert(currentScope.parent is null);
         return 0;
     }
 
-    // check currentLineIndex after this returns
-    void runLines(size_t startLineIndex, bool disable)
+    // returns the index of the '@end' directive if encountered, or lines.length
+    size_t runLines(size_t startLineIndex, bool enabled)
     {
-        const saveDisabled = this.disabled;
-        this.disabled = disable;
-        scope(exit) this.disabled = saveDisabled;
+        uint blockLevel = 1;
 
-        for (size_t nextLineIndex = startLineIndex; nextLineIndex < lines.length; nextLineIndex++)
+        size_t lineIndex = startLineIndex;
+        while (true)
         {
-            this.currentLineIndex = nextLineIndex; // save the current line
-            const line = lines[nextLineIndex].stripLeft();
-            if (line.startsWith("#"))
+            if (lineIndex == lines.length)
+            {
+                if (blockLevel != 1)
+                    errorExit((lineIndex == 0) ? 0 : lineIndex - 1, "missing '@end'");
+                return lineIndex;
+            }
+            const line = lines[lineIndex].stripLeft();
+            if (line.startsWith("#")) {lineIndex++;continue;}
+            if (line == "@end")
+            {
+                blockLevel--;
+                if (blockLevel == 0)
+                    return lineIndex;
+                lineIndex++;
                 continue;
-            auto lineParts = splitHandleQuoted(substitute(line));
-            if (lineParts.length == 0) continue;
+            }
+            if (!enabled)
+            {
+                if (line.startsWith("@foreach") || line.startsWith("@scope"))
+                    blockLevel++;
+                lineIndex++;
+                continue;
+            }
+            auto lineParts = splitHandleQuoted(lineIndex, substitute(lineIndex, line));
+            if (lineParts.length == 0) { lineIndex++; continue; }
             if (lineParts[0] == "@windows")
             {
-                version (Windows)
-                    lineParts = lineParts[1..$];
-                else
-                    continue;
+                version (Windows) { lineParts = lineParts[1..$]; }
+                else              { lineIndex++; continue; }
             }
             else if (lineParts[0] == "@notwindows")
             {
-                version (Windows)
-                    continue;
-                else
-                    lineParts = lineParts[1..$];
+                version (Windows) { lineIndex++; continue; }
+                else              { lineParts = lineParts[1..$]; }
             }
-            if (lineParts.length == 0) continue;
+            if (lineParts.length == 0) { lineIndex++; continue; }
             string cmd = lineParts[0];
             writefln("+ %s", escapeShellCommand(lineParts));
             stdout.flush();
             if (!cmd.startsWith("@"))
             {
-                if (!disabled)
-                    runProgram(lineParts);
+                runProgram(lineIndex, lineParts);
+                lineIndex++;
                 continue;
             }
             string[] args = lineParts[1..$];
@@ -169,62 +181,63 @@ struct Interpreter
             // Handle special builtins that affect control flow
             //
             if (false) { }
-            else if (cmd == "@end")
-            {
-                enforceArgCount(cmd, args, 0);
-                break;
-            }
             else if (cmd == "@foreach")
-            {
-                nextLineIndex = foreachBuiltin(args);
-            }
+                lineIndex = foreachBuiltin(lineIndex, args);
             else if (cmd == "@scope")
             {
                 currentScope = new Scope(currentScope);
                 scope (exit) currentScope = currentScope.parent;
+                const scopeLineIndex = lineIndex;
                 if (args.length == 0)
                 {
-                    runLines(currentLineIndex + 1, disabled);
-                    nextLineIndex = currentLineIndex - 1;
+                    lineIndex = runLines(scopeLineIndex + 1, enabled);
+                    if (lineIndex == lines.length)
+                        errorExit(scopeLineIndex, "@scope without an @end");
+                    lineIndex++;
                 }
                 else if (args[0] == "@foreach")
-                    nextLineIndex = foreachBuiltin(args[1..$]);
+                    lineIndex = foreachBuiltin(lineIndex, args[1..$]);
                 else
-                    errorExit(format("invalid argument to @scope '%s'", args[0]));
+                    errorExit(scopeLineIndex, format("invalid argument to @scope '%s'", args[0]));
             }
             else
             {
-                if (!disabled)
-                    runSimpleBuiltin(cmd, args);
+                runSimpleBuiltin(lineIndex, cmd, args);
+                lineIndex++;
             }
         }
-        currentLineIndex++;
     }
 
-    size_t foreachBuiltin(string[] args)
+    size_t foreachBuiltin(size_t lineIndex, string[] args)
     {
-        if (disabled || args.length == 0)
-            runLines(currentLineIndex + 1, true);
+        size_t endLineIndex;
+        if (args.length <= 1)
+        {
+            endLineIndex = runLines(lineIndex + 1, false);
+            if (endLineIndex == lines.length)
+                errorExit(endLineIndex - 1, "@foreach without and @end");
+        }
         else
         {
             const varName = args[0];
-            const loopStartLineIndex = currentLineIndex + 1;
             foreach (varValue; args[1..$])
             {
                 currentScope.vars[varName] = varValue;
-                runLines(loopStartLineIndex, false);
+                endLineIndex = runLines(lineIndex + 1, true);
+                if (endLineIndex == lines.length)
+                    errorExit(endLineIndex - 1, "@foreach without and @end");
             }
         }
-        return currentLineIndex - 1;
+        return endLineIndex + 1;
     }
 
-    void enforceArgCount(string cmd, string[] args, size_t expected)
+    void enforceArgCount(size_t lineIndex, string cmd, string[] args, size_t expected)
     {
         if (args.length != expected)
-            errorExit(format("the '%s' builtin requires %s arguments but got %s", cmd, expected, args.length));
+            errorExit(lineIndex, format("the '%s' builtin requires %s arguments but got %s", cmd, expected, args.length));
     }
 
-    void runSimpleBuiltin(string cmd, string[] args)
+    void runSimpleBuiltin(size_t lineIndex, string cmd, string[] args)
     {
         if (false) { }
         else if (cmd == "@note")
@@ -243,12 +256,12 @@ struct Interpreter
         }
         else if (cmd == "@set")
         {
-            enforceArgCount(cmd, args, 2);
+            enforceArgCount(lineIndex, cmd, args, 2);
             currentScope.vars[args[0]] = args[1];
         }
         else if (cmd == "@default")
         {
-            enforceArgCount(cmd, args, 2);
+            enforceArgCount(lineIndex, cmd, args, 2);
             if (args[0] !in currentScope.vars)
                 currentScope.vars[args[0]] = args[1];
         }
@@ -274,24 +287,26 @@ struct Interpreter
         }
         else if (cmd == "@mv")
         {
-            enforceArgCount(cmd, args, 2);
+            enforceArgCount(lineIndex, cmd, args, 2);
             rename(args[0], args[1]);
         }
         else if (cmd == "@cp")
         {
-            enforceArgCount(cmd, args, 2);
+            enforceArgCount(lineIndex, cmd, args, 2);
             copy(args[0], args[1]);
         }
-        else errorExit(format("unknown builtin command '%s'", cmd));
+        else errorExit(lineIndex, format("unknown builtin command '%s'", cmd));
     }
 
-    void runProgram(string[] args)
+    void runProgram(size_t lineIndex, string[] args)
     {
         string outputFile = null;
         if (args.length >= 2 && args[$-2] == ">")
         {
             outputFile = args[$-1];
         }
+        // TODO: use a function that will print the program's output as it is generated
+        //       rather than waiting till it exits to print the output
         const result = execute(args);
         if (outputFile !is null)
             std.file.write(outputFile, result.output);

@@ -15,7 +15,7 @@
 @end
 
 @scope @foreach test ${unitTests}
-    rund -g -debug -I=out/src_mscorlib -I=out/test/unit/${test}/src --pass=test/unit/${test}/test.d test/unit/unittestcoreclr.d out/test/unit/${test}/${test}.dll
+    rund -g -debug -i=-mscorlib -I=out/dlibs/src -I=out/test/unit/${test}/src --pass=test/unit/${test}/test.d test/unit/unittestcoreclr.d out/test/unit/${test}/${test}.dll
 @end
 
 # TODO: add callback host test

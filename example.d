@@ -5,7 +5,9 @@
 //!importPath dlang/src_coreclr
 //!importPath dlang/src_clr
 //!importPath dlang/src_clrbridge
-//!importPath out/src_mscorlib
+//!importPath out/dlibs/src
+
+// TODO: configure rund to use the pre-compiled mscorlib to improve compile-times
 
 import std.path : buildPath, dirName;
 import std.stdio;

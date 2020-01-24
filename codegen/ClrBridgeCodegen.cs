@@ -330,6 +330,14 @@ class Generator : ExtraReflection
             module.Dispose();
         }
 
+        using (StreamWriter writer = new StreamWriter(new FileStream(Path.Combine(tempPackageDir, "all.d"), FileMode.Create, FileAccess.Write, FileShare.Read)))
+        {
+            foreach (DModule module in moduleMap.Values)
+            {
+                writer.WriteLine("public import {0};", module.fullName);
+            }
+        }
+
         String assemblyHashFile = Path.Combine(tempPackageDir, "AssemblyHash");
         Console.WriteLine("writing assembly hash file '{0}' with '{1}'", assemblyHashFile, assemblyHash);
         File.WriteAllText(assemblyHashFile, assemblyHash);

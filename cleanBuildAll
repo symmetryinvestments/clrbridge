@@ -1,6 +1,11 @@
 @default dotnetCompiler csc
 @windows    @default dotnetLoader ""
 @notwindows @default dotnetLoader "mono"
+@default dCompiler dmd
+
+@windows    @set libext .lib
+@notwindows @set libext .a
+
 @rm out
 
 # download dependencies (i.e. DerelictUtil)
@@ -21,11 +26,15 @@ rund minish.d buildClrBridgeCodegen dotnetCompiler=${dotnetCompiler}
 # invoke ClrBridgeCodegen.exe to generate D wrapper code for common .NET libraries
 rund minish.d generateDWrappers dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
+# invoke ClrBridgeCodegen.exe to generate D wrapper code for common .NET libraries
+rund minish.d compileDWrappers dCompiler=${dCompiler}
+
 # run unit tests
 rund minish.d runUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
 # execute the example that uses the code from generateDWrappers
-rund example.d
+# rund example.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)
+rund -i=-mscorlib out/dlibs/mscorlib${libext} example.d
 
 # build the ClrCallbackHost.exe .NET executable
 rund minish.d buildClrCallbackHost dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
