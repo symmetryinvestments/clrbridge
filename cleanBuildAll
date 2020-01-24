@@ -26,7 +26,6 @@ rund minish.d buildClrBridgeCodegen dotnetCompiler=${dotnetCompiler}
 # invoke ClrBridgeCodegen.exe to generate D wrapper code for common .NET libraries
 rund minish.d generateDWrappers dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
-# invoke ClrBridgeCodegen.exe to generate D wrapper code for common .NET libraries
 rund minish.d compileDWrappers dCompiler=${dCompiler}
 
 # run unit tests
