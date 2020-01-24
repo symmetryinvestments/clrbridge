@@ -300,21 +300,16 @@ struct Interpreter
 
     void runProgram(size_t lineIndex, string[] args)
     {
-        string outputFile = null;
+        File outFile;
         if (args.length >= 2 && args[$-2] == ">")
-        {
-            outputFile = args[$-1];
-        }
-        // TODO: use a function that will print the program's output as it is generated
-        //       rather than waiting till it exits to print the output
-        const result = execute(args);
-        if (outputFile !is null)
-            std.file.write(outputFile, result.output);
+            outFile = File(args[$-1], "w");
         else
-            writeln(result.output.stripRight);
-        if (result.status != 0)
+            outFile = std.stdio.stdout;
+        auto process = spawnProcess(args, std.stdio.stdin, outFile);
+        const result = wait(process);
+        if (result != 0)
         {
-            writefln("ERROR: last command exited with code %s", result.status);
+            writefln("ERROR: last command exited with code %s", result);
             exit(1);
         }
     }
