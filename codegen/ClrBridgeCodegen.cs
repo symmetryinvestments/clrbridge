@@ -155,7 +155,7 @@ class ExtraReflection
         if (type.IsGenericParameter)
         {
             importQualifier = ""; // no import necessary
-            return type.Name;
+            return type.Name.ToDIdentifier();
         }
 
         Debug.Assert(type != typeof(void)); // not handled yet
@@ -687,7 +687,7 @@ class Generator : ExtraReflection
             for (Int32 i = inheritedGenericArgCount; i < genericArgs.Length; i++)
             {
                 Type t = genericArgs[i];
-                context.Write("{0}{1}", prefix, t.Name);
+                context.Write("{0}{1}", prefix, t.Name.ToDIdentifier());
                 prefix = ", ";
             }
             context.Write(")");
@@ -701,7 +701,7 @@ class Generator : ExtraReflection
             string prefix = "";
             foreach (ParameterInfo parameter in parameters)
             {
-                module.Write("{0}{1} {2}", prefix, module.TypeReferenceForD(this, parameter.ParameterType), Util.ToDIdentifier(parameter.Name));
+                module.Write("{0}{1} {2}", prefix, module.TypeReferenceForD(this, parameter.ParameterType), parameter.Name.ToDIdentifier());
                 prefix = ", ";
             }
         }
@@ -762,7 +762,7 @@ class Generator : ExtraReflection
                     if (boxType != null)
                     {
                         context.WriteLine("auto  __param{0}__ = __d.globalClrBridge.box!\"{1}\"({2}); // actual type is {3}",
-                            paramIndex, boxType, Util.ToDIdentifier(parameter.Name), parameter.ParameterType.FullName);
+                            paramIndex, boxType, parameter.Name.ToDIdentifier(), parameter.ParameterType.FullName);
                         context.WriteLine("scope (exit) __d.globalClrBridge.release(__param{0}__);", paramIndex);
                     }
                 }
@@ -788,7 +788,7 @@ class Generator : ExtraReflection
                     else if (parameter.ParameterType.IsEnum || TryGetBoxType(parameter.ParameterType) != null)
                         context.WriteLine("    {0}__param{1}__", prefix, paramIndex);
                     else
-                        context.WriteLine("    {0}{1}", prefix, Util.ToDIdentifier(parameter.Name));
+                        context.WriteLine("    {0}{1}", prefix, parameter.Name.ToDIdentifier());
                     prefix = ",";
                     paramIndex++;
                 }
@@ -1139,7 +1139,7 @@ static class Util
             return "MscorlibException";
         if (type.Name == "TypeInfo")
             return "MscorlibTypeInfo";
-        return ToDIdentifier(type.Name);
+        return type.Name.ToDIdentifier();
     }
     public static String UnsupportedTypeRef(this Type type)
     {
