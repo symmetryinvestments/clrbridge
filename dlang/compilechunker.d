@@ -12,7 +12,7 @@ import std.format : format;
 import std.path : setExtension, buildPath;
 import std.file : dirEntries, SpanMode;
 import std.stdio;
-import std.process : spawnProcess, wait, escapeShellCommand;
+import std.process : spawnShell, wait, escapeShellCommand;
 
 void usage()
 {
@@ -85,8 +85,9 @@ else
 
 void run(string[] cmd)
 {
-    writefln("[SPAWN] %s", escapeShellCommand(cmd));
-    auto process = spawnProcess(cmd);
+    const shellCommand = escapeShellCommand(cmd);
+    writefln("[SPAWN] %s", shellCommand);
+    auto process = spawnShell(shellCommand);
     const result = wait(process);
     if (result != 0)
     {
