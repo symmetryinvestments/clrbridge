@@ -42,7 +42,8 @@ rund minish.d buildClrCallbackHost dotnetCompiler=${dotnetCompiler} dotnetLoader
 rund minish.d runCallbackHostExample dotnetLoader=${dotnetLoader}
 
 # run coreclr host tests
-rund test/coreclrhostdriver.d
+# rund test/coreclrhostdriver.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)
+rund -i=-mscorlib out/dlibs/mscorlib${libext} test/coreclrhostdriver.d
 
 # run callback host tests
 rund minish.d runCallbackHostTests

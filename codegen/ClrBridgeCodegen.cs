@@ -711,27 +711,35 @@ class Generator : ExtraReflection
     void GenerateMethodBody(DMethodContext context, Type type,
         MethodBase method, Type returnType, ParameterInfo[] parameters)
     {
+        String methodKind = method.IsConstructor ? "Constructor" : "Method";
+
         // TODO: we may want to cache some of this stuff, but for now we'll just get it every time
         Type[] genericArgs = method.IsGenericMethod ? method.GetGenericArguments() : null;
-        context.WriteLine("enum __method_spec__ = __d.clrbridge.MethodSpec(__clrmetadata.typeSpec, \"{0}\",", method.Name);
-        context.Write    ("    /* generic args */ ");
-        GenerateGenericTypeSpecsExpression(context, "    ", genericArgs);
-        context.Write(", /* parameter types */ ");
+        context.WriteLine("enum __method_spec__ = __d.clrbridge.{0}Spec(__clrmetadata.typeSpec,", methodKind);
+        context.IncreaseDepth();
+        if (!method.IsConstructor)
+        {
+            context.WriteLine("\"{0}\",", method.Name);
+            context.Write    ("/* generic args */ ");
+            GenerateGenericTypeSpecsExpression(context, "    ", genericArgs);
+            context.WriteLine(",");
+        }
+        context.Write    ("/* parameter types */ ");
         GenerateParameterTypeSpecExpression(context, "    ", parameters);
+        context.DecreaseDepth();
         context.WriteLine(");");
 
-        String methodTypeString = method.IsConstructor ? "Constructor" : "Method";
+        String methodSuffix;
+        if (method.IsConstructor)
+            methodSuffix = "Constructor";
+        else
+        {
+            methodSuffix = "ClosedMethod";
+            context.WriteLine("assert(__method_spec__.genericTypes.length == 0, \"methods with generic args not implemented\");");
+        }
 
-        // Get Assembly so we can get Type then Method (TODO: cache this somehow?)
-        context.WriteLine("const  __this_type__ = __d.globalClrBridge.getClosedType!(__clrmetadata.typeSpec);");
-        context.WriteLine("scope (exit) __this_type__.finalRelease(__d.globalClrBridge);");
-        context.WriteLine("assert(__method_spec__.genericTypes.length == 0, \"methods with generic args not implemented\");");
-        // TODO: use getClosedMethod and getClosedConstructor
-        context.WriteLine("const __method__ = __d.globalClrBridge.get{0}(__this_type__.type,", methodTypeString);
-        if (!method.IsConstructor)
-            context.WriteLine("    __d.CStringLiteral!\"{0}\",", method.Name);
-        context.WriteLine("    __d.globalClrBridge.getTypesArray!(__method_spec__.paramTypes)());");
-        context.WriteLine("scope (exit) { __d.globalClrBridge.release(__method__); }");
+        context.WriteLine("const __method__ = __d.globalClrBridge.get{0}!__method_spec__();", methodSuffix);
+        context.WriteLine("scope (exit) __d.globalClrBridge.release(__method__);");
 
         //
         // Create parameters ObjectArray

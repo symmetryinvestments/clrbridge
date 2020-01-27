@@ -487,6 +487,20 @@ struct ClrBridge
         else
             return ClosedTypeResult(resolveGenericType(unresolvedType, genericTypesArray), true);
     }
+
+    ConstructorInfo getConstructor(ConstructorSpec constructorSpec)()
+    {
+        const typeResult = getClosedType!(constructorSpec.typeSpec)();
+        scope (exit) typeResult.finalRelease(this);
+        return getConstructor!constructorSpec(typeResult.type);
+    }
+    ConstructorInfo getConstructor(ConstructorSpec constructorSpec)(const Type type)
+    {
+        const paramTypesArray = getTypesArray!(constructorSpec.paramTypes);
+        scope (exit) release(paramTypesArray);
+        return getConstructor(type, paramTypesArray);
+    }
+
     MethodInfo getClosedMethod(MethodSpec methodSpec)()
     {
         const typeResult = getClosedType!(methodSpec.typeSpec)();
@@ -554,6 +568,12 @@ struct MethodSpec
     TypeSpec typeSpec;
     string methodName;
     TypeSpec[] genericTypes;
+    TypeSpec[] paramTypes;
+}
+
+struct ConstructorSpec
+{
+    TypeSpec typeSpec;
     TypeSpec[] paramTypes;
 }
 
