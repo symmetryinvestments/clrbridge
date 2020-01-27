@@ -1,9 +1,10 @@
 @default dCompiler dmd
 #@default libs "mscorlib System"
 @default libs "mscorlib"
+@default maxCompileSet 43
 
 @set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src"
 
 @scope @foreach lib ${libs}
-    ${dCompiler} -lib -of=out/dlibs/${lib} ${includePaths} -i=${lib} out/dlibs/src/${lib}/all.d
+    rund dlang/compilechunker.d ${maxCompileSet} out/dlibs/src/${lib} out/dlibs/obj/${lib} ${dCompiler} -lib -- ${includePaths} -- -of=out/dlibs/${lib}
 @end
