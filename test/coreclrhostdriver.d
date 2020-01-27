@@ -7,6 +7,8 @@
 //!importPath ../dlang/src_clrbridge
 //!importPath ../out/dlibs/src
 //!importPath tests
+//!debug
+//!debugSymbols
 
 import std.path : buildPath, dirName;
 import std.stdio;

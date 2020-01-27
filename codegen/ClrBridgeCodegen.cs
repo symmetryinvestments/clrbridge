@@ -173,6 +173,9 @@ class ExtraReflection
         if (type == typeof(Single))  { importQualifier = ""; return "float"; }
         if (type == typeof(Double))  { importQualifier = ""; return "double"; }
         if (type == typeof(Decimal)) { importQualifier = ""; return "__d.clr.Decimal"; }
+        // TODO: using this causes D compiler to take too much memory while compiling mscorlib
+        //       so for now I'm disabling it by using __d.clr.DotNetObject instead
+        //if (type == typeof(Object))  { importQualifier = "mscorlib.System"; return "mscorlib.System.MscorlibObject"; }
         if (type == typeof(Object))  { importQualifier = ""; return "__d.clr.DotNetObject"; }
 
         // TODO: do this for all types, not just enums
@@ -502,9 +505,20 @@ class Generator : ExtraReflection
         context.EnterBlock();
         using (DTypeContext typeContext = new DTypeContext(context))
         {
-            String baseTypeForD = (type.BaseType == null) ? "__d.clr.DotNetObject" : typeContext.TypeReferenceForD(this, type.BaseType);
+            String baseTypeForD;
+            if (type == typeof(Object))
+                baseTypeForD = "__d.clr.DotNetObject";
+            else
+            {
+                Type baseType = (type.BaseType == null) ? typeof(System.Object) : type.BaseType;
+                // this is a hack, I should not have this 'if' clause but if I don't do this then
+                // the D compiler runs out of memory trying to compile mscorlib on my 8 GB System!
+                if (type.BaseType == null)
+                    baseTypeForD = "__d.clr.DotNetObject";
+                else
+                    baseTypeForD = typeContext.TypeReferenceForD(this, baseType);
+            }
             typeContext.WriteLine("mixin __d.clrbridge.DotNetObjectMixin!q{{{0}}};", baseTypeForD);
-
             // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
             // get the .NET name for this type
             GenerateMetadata(typeContext, type, genericArgs);

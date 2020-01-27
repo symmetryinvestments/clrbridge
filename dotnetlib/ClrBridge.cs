@@ -154,6 +154,8 @@ public static partial class ClrBridge
             *(Decimal*)returnValuePtr = (Decimal)obj;
         } else if (type.IsEnum) {
             MarshalReturnValue(Enum.GetUnderlyingType(type), obj, returnValuePtr);
+        } else if (!type.IsValueType) {
+            *(IntPtr*)returnValuePtr = GCHandle.ToIntPtr(GCHandle.Alloc(obj));
         } else {
             Console.WriteLine("WARNING: cannot marshal return type '{0}' to native yet", type.Name);
         }
