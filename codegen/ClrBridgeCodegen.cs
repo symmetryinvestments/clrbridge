@@ -184,8 +184,6 @@ class ExtraReflection
         Boolean useRealType = false;
         if (type.IsEnum)
         {
-            // workaround issue in mscorlib with referencing the SecurityZone type
-            if (type.Name == "SecurityZone") { importQualifier = ""; return "__d.clr.Enum!int"; }
             useRealType = true;
         }
         else if (
