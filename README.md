@@ -104,3 +104,7 @@ The build is separated into individual steps which you can see in [cleanBuildAll
 # Notes
 
 Currently I use a sequence of calls to create/pass arrays to the CLR.  Instead, I could leverage the technique I use for return values to create an array in one call.  Namely, layout the array elements in memory, then call a function to serialize it into a .NET array.  ClrBridge would iterate over each elements, marshaling each value like it does a return value.  Note that this is just an optimization, I'll have to check performance to see if this extra code is worth it.
+
+### Idea: Using D's GC to release C# object references
+
+All .NET Object references returned by ClrBridge are "pinned", meaning that C# will not garbage collect them.  It is up to the D code to release object references in order for the Clr to collect them.  Right now the D application can call `globalClrBridge.release` to release a reference, however, I'd like to see if it's feasible to have the D garbage collector call this automatically when these C# objects are out of scope and no longer referenced. I believe this will require wrapping the .NET object references to D objects allocated on the heap.
