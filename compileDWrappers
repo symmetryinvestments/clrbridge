@@ -1,7 +1,10 @@
 @default dCompiler dmd
 #@default libs "mscorlib System"
 @default libs "mscorlib"
-@default maxCompileSet 43
+
+# limiting on windows much more since the compiler is usually 32 bit and has much less available memory
+@windows    @default maxCompileSet 5
+@notwindows @default maxCompileSet 45
 
 @set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src"
 
