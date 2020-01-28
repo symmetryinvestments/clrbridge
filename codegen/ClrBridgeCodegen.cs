@@ -638,7 +638,17 @@ class Generator : ExtraReflection
             //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             // skip virtual methods for now so we don't get linker errors
             if (method.IsVirtual)
+            {
+                context.WriteLine("// skipping virtual method '{0}'", method.Name);
                 continue;
+            }
+            // skip methods that are not declared by this type to avoid symbol issues for now
+            if (method.DeclaringType != type)
+            {
+                context.WriteLine("// skipping method '{0}' becuase it is declared in another type '{1}'",
+                    method.Name, method.DeclaringType);
+                continue;
+            }
 
             context.Write("{0}", method.IsPrivate ? "private" : "public");
             if (method.IsStatic)
