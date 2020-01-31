@@ -9,5 +9,6 @@
 @set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src"
 
 @scope @foreach lib ${libs}
-    rund dlang/compilechunker.d ${maxCompileSet} out/dlibs/src/${lib} out/dlibs/obj/${lib} ${dCompiler} -lib -- ${includePaths} -- -of=out/dlibs/${lib}
+    # TODO: I don't think dmd works unless you use -lib on the -c compile commands??? But ldmd2 only with if you don't include -lib in the -c compile commands.
+    rund dlang/compilechunker.d ${maxCompileSet} out/dlibs/src/${lib} out/dlibs/obj/${lib} ${dCompiler} -- ${includePaths} -- -lib -of=out/dlibs/${lib}
 @end
