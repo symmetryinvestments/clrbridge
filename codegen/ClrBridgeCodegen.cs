@@ -10,7 +10,10 @@ using System.Text;
 //       if I provide any configuration options, they should probably be in a file
 //       and I would need to make sure that all .NET assemblies that have been translated
 //       have the SAME configuration.  I might be able to verify this somehow?
-
+class AlreadyReportedException : Exception
+{
+    public AlreadyReportedException() { }
+}
 
 static class ClrBridgeCodegen
 {
@@ -21,6 +24,11 @@ static class ClrBridgeCodegen
         Console.WriteLine("  --shallow   Only generate for the given assembly, ignore assembly references");
     }
     public static Int32 Main(String[] args)
+    {
+        try { return Main2(args); }
+        catch (AlreadyReportedException) { return 1; }
+    }
+    public static Int32 Main2(String[] args)
     {
         Boolean shallow = false;
         List<String> nonOptionArgs = new List<String>();
@@ -251,6 +259,7 @@ class Generator : ExtraReflection
 {
     readonly String outputDir;
     readonly Dictionary<String,DModule> moduleMap;
+    readonly Dictionary<String,DModule> moduleUpperCaseMap;
     readonly String thisAssemblyPackageName; // cached version of GetExtraAssemblyInfo(thisAssembly).packageName
     readonly String finalPackageDir;
     readonly String tempPackageDir;
@@ -260,6 +269,7 @@ class Generator : ExtraReflection
     {
         this.outputDir = outputDir;
         this.moduleMap = new Dictionary<String,DModule>();
+        this.moduleUpperCaseMap = new Dictionary<String,DModule>();
         this.thisAssemblyPackageName = GetExtraAssemblyInfo(thisAssembly).packageName;
         this.finalPackageDir = Path.Combine(outputDir, this.thisAssemblyPackageName);
         this.tempPackageDir = this.finalPackageDir + ".generating";
@@ -334,6 +344,20 @@ class Generator : ExtraReflection
             DModule module;
             if (!moduleMap.TryGetValue(type.Namespace.NullToEmpty(), out module))
             {
+                String namespaceUpper = type.Namespace.NullToEmpty().ToUpper();
+                if (moduleUpperCaseMap.TryGetValue(namespaceUpper, out module))
+                {
+                    // This is a problem because we cannot create files/directories that only differ in casing on windows.
+                    // Futhermore, the code could be generated on windows/linux and move to or from the other so we shouldn't
+                    // generated different code for windows/linux.
+                    // One solution would be to normalize all the namespaces to lowercase (D style), however that would cause
+                    // a problem if a C# application intentionally used different case to declare the same symbols.
+                    // For now, I'll assert an error if this happens, and maybe write a tool to fix an assembly that has this problem.
+                    Console.WriteLine("Error: there are multiple namespaces that match but have different upper/lower casing:");
+                    Console.WriteLine("    {0}", module.dotnetNamespace);
+                    Console.WriteLine("    {0}", type.Namespace);
+                    throw new AlreadyReportedException();
+                }
                 String outputDFilename = Path.Combine(tempPackageDir, Util.NamespaceToModulePath(type.Namespace));
                 Console.WriteLine("[DEBUG] NewDModule '{0}'", outputDFilename);
                 Directory.CreateDirectory(Path.GetDirectoryName(outputDFilename));
@@ -352,6 +376,7 @@ class Generator : ExtraReflection
                 writer.WriteLine("    alias ObjectArray = clrbridge.Array!(clr.PrimitiveType.Object);");
                 writer.WriteLine("}");
                 moduleMap.Add(type.Namespace.NullToEmpty(), module);
+                moduleUpperCaseMap.Add(namespaceUpper, module);
             }
             GenerateType(module, type);
         }
