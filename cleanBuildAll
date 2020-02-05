@@ -3,6 +3,10 @@
 @notwindows @default dotnetLoader "mono"
 @default dCompiler dmd
 
+@notwindows @default wget wget
+@notwindows @default unzip unzip
+@windows    @default 7z 7z
+
 @windows    @set libext .lib
 @notwindows @set libext .a
 
@@ -51,5 +55,7 @@ rund minish.d runCallbackHostTests
 #
 # The AssemblyPatcher Tool
 #
-rund minish.d assemblypatcher/downloadCecil
+@notwindows @set downloadCecilArgs "wget=${wget} unzip=${unzip}"
+@windows    @set downloadCecilArgs 7z=${7z}
+rund minish.d assemblypatcher/downloadCecil ${downloadCecilArgs}
 rund minish.d assemblypatcher/build

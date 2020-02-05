@@ -1,4 +1,6 @@
 #!/usr/bin/env rund
+//!debug
+//!debugSymbols
 //
 // A small quick and dirty script interpreter made so we can run the same
 // scripts on Windows and Posix.
@@ -144,7 +146,7 @@ struct Interpreter
                     errorExit((lineIndex == 0) ? 0 : lineIndex - 1, "missing '@end'");
                 return lineIndex;
             }
-            const line = lines[lineIndex].stripLeft();
+            auto line = lines[lineIndex].stripLeft();
             if (line.startsWith("#")) {lineIndex++;continue;}
             if (line == "@end")
             {
@@ -161,18 +163,17 @@ struct Interpreter
                 lineIndex++;
                 continue;
             }
-            auto lineParts = splitHandleQuoted(lineIndex, substitute(lineIndex, line));
-            if (lineParts.length == 0) { lineIndex++; continue; }
-            if (lineParts[0] == "@windows")
+            if (line.startsWith("@windows"))
             {
-                version (Windows) { lineParts = lineParts[1..$]; }
+                version (Windows) { line = line[9..$].stripLeft(); }
                 else              { lineIndex++; continue; }
             }
-            else if (lineParts[0] == "@notwindows")
+            else if (line.startsWith("@notwindows"))
             {
                 version (Windows) { lineIndex++; continue; }
-                else              { lineParts = lineParts[1..$]; }
+                else              { line = line[12..$].stripLeft(); }
             }
+            auto lineParts = splitHandleQuoted(lineIndex, substitute(lineIndex, line));
             if (lineParts.length == 0) { lineIndex++; continue; }
             string cmd = lineParts[0];
             writefln("+ %s", escapeShellCommand(lineParts));
