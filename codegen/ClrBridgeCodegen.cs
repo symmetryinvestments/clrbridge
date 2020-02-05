@@ -59,6 +59,7 @@ static class ClrBridgeCodegen
         AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(AssemblyResolveCallback);
 
         Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap = new Dictionary<Assembly, ExtraAssemblyInfo>();
+        List<TempPackage> newlyGeneratedAssemblies = new List<TempPackage>();
         {
             Assembly assembly;
             if (assemblyString.StartsWith("file:"))
@@ -74,7 +75,9 @@ static class ClrBridgeCodegen
                 Console.WriteLine("Error: assembly string must start with 'file:' or 'gac:' but got '{0}'", assemblyString);
                 return 1;
             }
-            new Generator(sharedAssemblyMap, assembly, outputDir).GenerateModules(false);
+            TempPackage tempPackage = new Generator(sharedAssemblyMap, assembly, outputDir).GenerateModules(false);
+            if (!tempPackage.IsNull())
+                newlyGeneratedAssemblies.Add(tempPackage);
         }
         if (!shallow)
         {
@@ -85,7 +88,9 @@ static class ClrBridgeCodegen
                 {
                     if (pair.Value.state == AssemblyState.Initial)
                     {
-                        new Generator(sharedAssemblyMap, pair.Key, outputDir).GenerateModules(false);
+                        TempPackage tempPackage = new Generator(sharedAssemblyMap, pair.Key, outputDir).GenerateModules(false);
+                        if (!tempPackage.IsNull())
+                            newlyGeneratedAssemblies.Add(tempPackage);
                         Debug.Assert(pair.Value.state == AssemblyState.Generated);
                         break; // break out of the loop because the map would have been modified
                     }
@@ -95,8 +100,17 @@ static class ClrBridgeCodegen
                 if (generatedCount == sharedAssemblyMap.Count)
                     break;
             }
-            Console.WriteLine("all {0} assemblies have been generated", sharedAssemblyMap.Count);
         }
+        // Move assemblies to their final location
+        // We do this at the end so that if an assembly fails, we regenerate all assemblies, otherwise,
+        // an assembly that caused another assembly to be generated could have succeeded and then won't cause
+        // the failed assembly to be loaded in a future run
+        foreach (TempPackage pkg in newlyGeneratedAssemblies)
+        {
+            Console.WriteLine("moving temporary package dir '{0}' to final package dir '{1}'", pkg.tempDir, pkg.finalDir);
+            Directory.Move(pkg.tempDir, pkg.finalDir);
+        }
+        Console.WriteLine("all {0} assemblies have been generated", sharedAssemblyMap.Count);
         return 0;
     }
     static readonly List<String> ExtraAssemblyPaths = new List<String>();
@@ -123,6 +137,19 @@ static class ClrBridgeCodegen
         Console.WriteLine("[DEBUG]     => NOT FOUND!");
         return null;
     }
+}
+
+struct TempPackage
+{
+    public static TempPackage NullValue() { return new TempPackage(null, null); }
+    public readonly String tempDir;
+    public readonly String finalDir;
+    public TempPackage(String tempDir, String finalDir)
+    {
+        this.tempDir = tempDir;
+        this.finalDir = finalDir;
+    }
+    public Boolean IsNull() { return tempDir == null; }
 }
 
 class ExtraReflection
@@ -286,8 +313,8 @@ class Generator : ExtraReflection
         return lastGeneratedHash;
     }
 
-    // returns: true if it is newly generated, false if it is already generated
-    public Boolean GenerateModules(bool force)
+    // returns: the temporary directory of the assembly if it was newly generated
+    public TempPackage GenerateModules(bool force)
     {
         ExtraAssemblyInfo thisAssemblyInfo = GetExtraAssemblyInfo(thisAssembly);
         Debug.Assert(thisAssemblyInfo.state == AssemblyState.Initial);
@@ -295,7 +322,7 @@ class Generator : ExtraReflection
         Boolean result = GenerateModules2(force);
         Debug.Assert(thisAssemblyInfo.state == AssemblyState.Generating);
         thisAssemblyInfo.state = AssemblyState.Generated;
-        return result;
+        return result ? new TempPackage(tempPackageDir, finalPackageDir) : TempPackage.NullValue();
     }
 
     // returns: true if it is newly generated, false if it is already generated
@@ -397,8 +424,6 @@ class Generator : ExtraReflection
         String assemblyHashFile = Path.Combine(tempPackageDir, "AssemblyHash");
         Console.WriteLine("writing assembly hash file '{0}' with '{1}'", assemblyHashFile, assemblyHash);
         File.WriteAllText(assemblyHashFile, assemblyHash);
-        Console.WriteLine("moving temporary to final package dir '{0}'", finalPackageDir);
-        Directory.Move(tempPackageDir, finalPackageDir);
         return true; // newly generated
     }
 
@@ -1166,6 +1191,7 @@ static class Util
         String path = "";
         if (@namespace != null)
         {
+            @namespace = @namespace.ToDQualifiedIdentifier();
             foreach (String part in @namespace.Split('.'))
             {
                 path = Path.Combine(path, part);
