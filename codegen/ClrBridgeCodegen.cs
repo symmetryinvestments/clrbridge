@@ -48,11 +48,17 @@ static class ClrBridgeCodegen
         Console.WriteLine("outputDir: {0}", outputDir);
         Console.WriteLine("shallow  : {0}", shallow);
 
+        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(AssemblyResolveCallback);
+
         Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap = new Dictionary<Assembly, ExtraAssemblyInfo>();
         {
             Assembly assembly;
             if (assemblyString.StartsWith("file:"))
-                assembly = Assembly.LoadFile(Path.GetFullPath(assemblyString.Substring(5)));
+            {
+                String fileName = Path.GetFullPath(assemblyString.Substring(5));
+                ExtraAssemblyPaths.Add(Path.GetDirectoryName(fileName));
+                assembly = Assembly.LoadFile(fileName);
+            }
             else if (assemblyString.StartsWith("gac:"))
                 assembly = Assembly.Load(assemblyString.Substring(4));
             else
@@ -84,6 +90,30 @@ static class ClrBridgeCodegen
             Console.WriteLine("all {0} assemblies have been generated", sharedAssemblyMap.Count);
         }
         return 0;
+    }
+    static readonly List<String> ExtraAssemblyPaths = new List<String>();
+    static Assembly AssemblyResolveCallback(Object sender, ResolveEventArgs args)
+    {
+        Console.WriteLine("[DEBUG] Resolving Assembly '{0}'...", args.Name);
+        String shortName = args.Name;
+        {
+            Int32 commaIndex = args.Name.IndexOf(",");
+            if (commaIndex != -1)
+                shortName = args.Name.Remove(commaIndex);
+        }
+        Console.WriteLine("[DEBUG]    shortname '{0}'", shortName);
+        foreach (String extraPath in ExtraAssemblyPaths)
+        {
+            String assemblyFile = Path.Combine(extraPath, shortName + ".dll");
+            Console.WriteLine("[DEBUG]    checking for '{0}'", assemblyFile);
+            if (File.Exists(assemblyFile))
+            {
+                Console.WriteLine("[DEBUG]     => resolved to file '{0}'", assemblyFile);
+                return Assembly.LoadFile(assemblyFile);
+            }
+        }
+        Console.WriteLine("[DEBUG]     => NOT FOUND!");
+        return null;
     }
 }
 
@@ -282,7 +312,7 @@ class Generator : ExtraReflection
         if (Directory.Exists(tempPackageDir))
         {
             Console.WriteLine("deleting old temporary package dir '{0}'", tempPackageDir);
-            Directory.Delete(tempPackageDir);
+            Directory.Delete(tempPackageDir, true);
         }
 
         // on the first pass we identify types that need to be defined inside other types

@@ -38,6 +38,13 @@ int main(string[] args)
         return 1;
     }
     auto lines = File(scriptFilename, "r").byLineCopy.array;
+    // default directory is the directory of the script
+    const scriptPath = scriptFilename.absolutePath.dirName.buildNormalizedPath;
+    if (getcwd.buildNormalizedPath != scriptPath)
+    {
+        writefln("cd '%s'", scriptPath);
+        chdir(scriptPath);
+    }
     return Interpreter(scriptFilename, lines).runScript(varsFromCommandLine);
 }
 
