@@ -1,0 +1,11 @@
+@set wget wget
+@set unzip unzip
+
+@set name Mono.Cecil_0.11.1
+
+@rm ../out/${name}
+@mkdir ../out
+${wget} -O ../out/${name}.zip https://www.nuget.org/api/v2/package/Mono.Cecil/0.11.1
+mkdir ../out/${name}
+${unzip} ../out/${name}.zip -d ../out/${name}
+@rm ../out/${name}.zip

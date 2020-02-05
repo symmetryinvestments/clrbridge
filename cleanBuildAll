@@ -47,3 +47,9 @@ rund -i=-mscorlib out/dlibs/mscorlib${libext} test/coreclrhostdriver.d
 
 # run callback host tests
 rund minish.d runCallbackHostTests
+
+#
+# The AssemblyPatcher Tool
+#
+rund minish.d assemblypatcher/downloadCecil
+rund minish.d assemblypatcher/build

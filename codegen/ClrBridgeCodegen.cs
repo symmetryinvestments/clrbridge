@@ -19,7 +19,7 @@ static class ClrBridgeCodegen
 {
     static void Usage()
     {
-        Console.WriteLine("Usage: ClrBridgeCodegen.exe [options...] <DotNetAssembly> <OutputDir>");
+        Console.WriteLine("Usage: ClrBridgeCodegen.exe [--options...] <DotNetAssembly> <OutputDir>");
         Console.WriteLine("Options:");
         Console.WriteLine("  --shallow   Only generate for the given assembly, ignore assembly references");
     }
