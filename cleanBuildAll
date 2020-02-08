@@ -33,7 +33,7 @@ rund minish.d generateDWrappers dotnetCompiler=${dotnetCompiler} dotnetLoader=${
 rund minish.d compileDWrappers dCompiler=${dCompiler}
 
 # run unit tests
-rund minish.d runUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
+rund minish.d runUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
 
 # execute the example that uses the code from generateDWrappers
 # rund example.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)

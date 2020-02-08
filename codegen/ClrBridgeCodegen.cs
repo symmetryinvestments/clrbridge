@@ -1223,6 +1223,7 @@ static class Util
         if (s == "alias") return "alias_";
         return s
             .Replace("$", "_")
+            .Replace("|", "_")
             .Replace("<", "_")
             .Replace(">", "_")
             .Replace("=", "_")

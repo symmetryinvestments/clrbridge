@@ -1,6 +1,8 @@
 @default dotnetCompiler csc
 @windows    @default dotnetLoader ""
 @notwindows @default dotnetLoader "mono"
+@default dCompiler dmd
+
 @default unitTests "primitives fields enums classes generics"
 
 @scope @foreach test ${unitTests}
@@ -15,7 +17,7 @@
 @end
 
 @scope @foreach test ${unitTests}
-    rund -g -debug -i=-mscorlib -I=out/dlibs/src -I=out/test/unit/${test}/src --pass=test/unit/${test}/test.d test/unit/unittestcoreclr.d out/test/unit/${test}/${test}.dll
+    rund --compiler=${dCompiler} -g -debug -i=-mscorlib -I=out/dlibs/src -I=out/test/unit/${test}/src --pass=test/unit/${test}/test.d test/unit/unittestcoreclr.d out/test/unit/${test}/${test}.dll
 @end
 
 # TODO: add callback host test
