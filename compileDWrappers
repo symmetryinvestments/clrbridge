@@ -12,7 +12,7 @@
 # -lib required when using dmd, and -lib cannot be used when using ldmd2
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 @set extraCompileArgs -lib
-#@set extraCompileArgs
+#@set extraCompileArgs ""
 
 @scope @foreach lib ${libs}
     rund dlang/compilechunker.d ${maxCompileSet} out/dlibs/src/${lib} out/dlibs/obj/${lib} ${dCompiler} -- ${extraCompileArgs} ${includePaths} -- -lib -of=out/dlibs/${lib}

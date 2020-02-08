@@ -16,7 +16,12 @@ private
 {
     import derelict.util.system;
     static if(Derelict_OS_Windows)
-        enum defaultLibNames = `C:\Program Files (x86)\dotnet\shared\Microsoft.NETCore.App\3.1.0\coreclr.dll`;
+    {
+        version (Win64)
+            enum defaultLibNames = `C:\Program Files\dotnet\shared\Microsoft.NETCore.App\3.1.0\coreclr.dll`;
+        else
+            enum defaultLibNames = `C:\Program Files (x86)\dotnet\shared\Microsoft.NETCore.App\3.1.0\coreclr.dll`;
+    }
     else static if (Derelict_OS_Mac)
         enum defaultLibNames = "/usr/local/share/dotnet/shared/Microsoft.NETCore.App/2.2.3/libcoreclr.dylib";
     else static if (Derelict_OS_Linux)
