@@ -3,8 +3,8 @@
 @default libs "mscorlib"
 
 # limiting on windows much more since the compiler is usually 32 bit and has much less available memory
-@windows    @default maxCompileSet 5
-@notwindows @default maxCompileSet 45
+@windows    @default maxCompileSet  5000000
+@notwindows @default maxCompileSet 30000000
 
 @set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src"
 

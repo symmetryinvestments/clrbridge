@@ -13,6 +13,7 @@ import std.path : setExtension, buildPath;
 import std.file : dirEntries, SpanMode;
 import std.stdio;
 import std.process : spawnShell, wait, escapeShellCommand;
+static import std.file;
 
 void usage()
 {
@@ -61,10 +62,22 @@ int go(string srcDir, string objDir, size_t chunkSize, string[] commonArgs, stri
     }
     auto groups = appender!(CompileGroup[])();
     {
-        size_t nextGroupIndex = 0;
-        foreach(chunk; files.chunks(chunkSize))
+        size_t fileIndex = 0;
+        for (size_t nextGroupIndex = 0;; nextGroupIndex++)
         {
-            groups.put(CompileGroup(chunk, buildPath(objDir, ("group%s" ~ objExt).format(nextGroupIndex++))));
+            const startFileIndex = fileIndex;
+            size_t combinedSize = 0;
+            while (fileIndex < files.length && combinedSize < chunkSize)
+            {
+                combinedSize += std.file.getSize(files[fileIndex]);
+                fileIndex++;
+            }
+            if (startFileIndex == fileIndex)
+                break;
+            if (fileIndex > startFileIndex + 1) // remove last file if there is more than 1
+                fileIndex--;
+            groups.put(CompileGroup(files[startFileIndex..fileIndex],
+                buildPath(objDir, ("group%s" ~ objExt).format(nextGroupIndex))));
         }
     }
     // note: we don't compile each group in parallel because that defeats the entire purpose of this
