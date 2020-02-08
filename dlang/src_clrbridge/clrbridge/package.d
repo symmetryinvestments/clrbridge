@@ -384,7 +384,7 @@ struct ClrBridge
     }
     ClrBridgeError tryArrayBuilderFinish(clr.PrimitiveType T)(const ArrayBuilder!T ab, Array!T* outArray) nothrow @nogc
     {
-        return tryArrayBuilderFinishGeneric(cast(ArrayBuilderGeneric)ab, cast(ArrayGeneric*)outArray);
+        return tryArrayBuilderFinishGeneric(structCast!ArrayBuilderGeneric(ab), cast(ArrayGeneric*)outArray);
     }
     mixin DotnetPrimitiveWrappers!("tryArrayBuilderFinish");
 
@@ -400,7 +400,7 @@ struct ClrBridge
     }
     Array!T arrayBuilderFinish(clr.PrimitiveType T)(const ArrayBuilder!T ab)
     {
-        return cast(Array!T)arrayBuilderFinishGeneric(cast(ArrayBuilderGeneric)ab);
+        return structCast!(Array!T)(arrayBuilderFinishGeneric(structCast!ArrayBuilderGeneric(ab)));
     }
     mixin DotnetPrimitiveWrappers!("arrayBuilderFinish");
 
@@ -436,7 +436,7 @@ struct ClrBridge
         const result = tryMakeGenericArray(primitiveTypes.Object, &array, args);
         if (result.failed)
             throw new Exception(format("makeArray failed: %s", result));
-        return cast(Array!(clr.PrimitiveType.Object))array;
+        return structCast!(Array!(clr.PrimitiveType.Object))(array);
     }
 
     //
@@ -619,4 +619,11 @@ Reference a type from another .NET assembly
 template from(string name)
 {
     mixin("import from = " ~ name ~ ";");
+}
+
+// use pointer casts to workaround https://github.com/ldc-developers/ldc/issues/3314
+T structCast(T,U)(U s) if (T.sizeof == U.sizeof)
+{
+    pragma(inline, true);
+    return *cast(T*)&s;
 }
