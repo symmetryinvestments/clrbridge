@@ -1,5 +1,6 @@
-// A special unit test just for booleans because booleans are special.  Since they are marshaled as 16-bit integers,
-// they are the only dlang type where the marshal type is different from the dlang equivalent type.
+// A special unit test just for booleans because booleans are special.  They are marshaled as 16-bit integers
+// on 32-bit systems and 32-bit integers on 64-bit systemd.  They are the only dlang type where the marshal
+// type is different from the dlang equivalent type.
 import cstring;
 import clr : PrimitiveType, Decimal, TypeSpec, DotNetObject;
 import clrbridge : MethodSpec;
@@ -7,17 +8,22 @@ import clrbridge.global : globalClrBridge;
 import booleans;
 import std.stdio;
 
+version (X86_64)
+    alias BoolMarshalType = uint;
+else
+    alias BoolMarshalType = ushort;
+
 void test()
 {
     testBool(0, false);
     // booleans should be marshalled as 16-bit values, this tests that's the case
-    for (ushort value = 1; value != 0; value <<= 1)
+    for (BoolMarshalType value = 1; value != 0; value <<= 1)
     {
         testBool(value, true);        
     }
 }
 
-void testBool(ushort value, bool expected)
+void testBool(BoolMarshalType value, bool expected)
 {
     writefln("testing %s (0x%x) resolves to %s", value, value, expected);
     enum typeSpec = TypeSpec("booleans", "Funcs");
@@ -31,7 +37,7 @@ void testBool(ushort value, bool expected)
     const args = globalClrBridge.makeObjectArray(arg);
     scope (exit) globalClrBridge.release(args);
 
-    ushort returnValue = expected ? 0 : 0xFFFF;
+    BoolMarshalType returnValue = expected ? 0 : 0xFFFF;
     // TODO: no error return code?
     globalClrBridge.funcs.CallGeneric(method, DotNetObject.nullObject, args, cast(void**)&returnValue);
     assert(returnValue == expected ? 1 : 0);
