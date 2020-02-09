@@ -1,11 +1,11 @@
 #!/usr/bin/env rund
-//!importPath dlang/src_hresult
-//!importPath dlang/src_cstring
-//!importPath out/DerelictUtil/source
-//!importPath dlang/src_coreclr
-//!importPath dlang/src_clr
-//!importPath dlang/src_clrbridge
-//!importPath out/dlibs/src
+//!importPath ../dlang/src_hresult
+//!importPath ../dlang/src_cstring
+//!importPath ../out/DerelictUtil/source
+//!importPath ../dlang/src_coreclr
+//!importPath ../dlang/src_clr
+//!importPath ../dlang/src_clrbridge
+//!importPath ../out/dlibs/src
 
 // TODO: configure rund to use the pre-compiled mscorlib to improve compile-times
 
@@ -20,7 +20,7 @@ import mscorlib.System;
 
 int main(string[] args)
 {
-    initGlobalClrBridgeWithCoreclr(buildPath(__FILE_FULL_PATH__.dirName, "out", "ClrBridge.dll"));
+    initGlobalClrBridgeWithCoreclr(buildPath(__FILE_FULL_PATH__.dirName.dirName, "out", "ClrBridge.dll"));
 
     foreach (i; 0 .. 4)
         Console.WriteLine();

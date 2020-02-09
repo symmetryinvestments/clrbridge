@@ -18,10 +18,10 @@ rund minish.d downloadDeps
 # build the ClrBridge.dll .NET library
 rund minish.d buildClrBridge dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
-# at this point the noCodegenExample.d should work this example
-# uses ClrBridge.dll to call into .NET code, but doesn't require any generated code
+# at this point, dlang/noCodegenExample.d should work. this program uses
+# ClrBridge.dll to call into .NET code, but doesn't require any generated code
 # for some reason, this fails on windows without the "-g" option
-rund -g --compiler=${dCompiler} noCodegenExample.d
+rund -g --compiler=${dCompiler} dlang/noCodegenExample.d
 
 # build the ClrBridgeCodgen.exe .NET executable
 # this tool will take an assembly and generate D code to easily call into it
@@ -36,15 +36,15 @@ rund minish.d compileDWrappers dCompiler=${dCompiler}
 rund minish.d runUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
 
 # execute the example that uses the code from generateDWrappers
-# rund example.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)
-rund -i=-mscorlib out/dlibs/mscorlib${libext} --compiler=${dCompiler} example.d
+# rund dlang/example.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)
+rund -i=-mscorlib out/dlibs/mscorlib${libext} --compiler=${dCompiler} dlang/example.d
 
 # build the ClrCallbackHost.exe .NET executable
 rund minish.d buildClrCallbackHost dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
 # run the callbackHostExample
 # NOT WORKING ON WINDOWS!
-@notwindows rund minish.d runCallbackHostExample dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
+@notwindows rund minish.d dlang/runCallbackHostExample dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
 
 # run coreclr host tests
 # rund test/coreclrhostdriver.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)

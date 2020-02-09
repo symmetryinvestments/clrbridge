@@ -1,10 +1,10 @@
 #!/usr/bin/env rund
-//!importPath dlang/src_hresult
-//!importPath dlang/src_cstring
-//!importPath out/DerelictUtil/source
-//!importPath dlang/src_coreclr
-//!importPath dlang/src_clr
-//!importPath dlang/src_clrbridge
+//!importPath ../dlang/src_hresult
+//!importPath ../dlang/src_cstring
+//!importPath ../out/DerelictUtil/source
+//!importPath ../dlang/src_coreclr
+//!importPath ../dlang/src_clr
+//!importPath ../dlang/src_clrbridge
 
 import std.file : thisExePath;
 import std.path : buildPath, dirName;
@@ -21,7 +21,7 @@ static import clr;
 
 int main()
 {
-    initGlobalClrBridgeWithCoreclr(buildPath(__FILE_FULL_PATH__.dirName, "out", "ClrBridge.dll"));
+    initGlobalClrBridgeWithCoreclr(buildPath(__FILE_FULL_PATH__.dirName.dirName, "out", "ClrBridge.dll"));
 
     // test failure
     {
