@@ -13,13 +13,13 @@ void test()
     // booleans should be marshalled as 16-bit values, this tests that's the case
     for (ushort value = 1; value != 0; value <<= 1)
     {
-        writefln("testing %s (0x%x)", value, value);
         testBool(value, true);        
     }
 }
 
 void testBool(ushort value, bool expected)
 {
+    writefln("testing %s (0x%x) resolves to %s", value, value, expected);
     enum typeSpec = TypeSpec("booleans", "Funcs");
     enum methodSpec = MethodSpec(typeSpec, "Passthrough", null, [TypeSpec("mscorlib", "System.Boolean")]);
 

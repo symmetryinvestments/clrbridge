@@ -3,7 +3,7 @@
 @notwindows @default dotnetLoader "mono"
 @default dCompiler dmd
 
-@default unitTests "primitives fields enums classes generics"
+@default unitTests "primitives booleans fields enums classes generics"
 
 @scope @foreach test ${unitTests}
     @rm out/test/unit/${test}

@@ -52,8 +52,11 @@ struct PrimitiveTypeInfo
     string toString() const { return name; }
 }
 
+version (X86_64) enum BooleanMarshalType = "uint";
+else             enum BooleanMarshalType = "ushort";
+
 enum primitiveTypes = [
-    PrimitiveType.Boolean : immutable PrimitiveTypeInfo(PrimitiveType.Boolean, "bool",         "ushort"),
+    PrimitiveType.Boolean : immutable PrimitiveTypeInfo(PrimitiveType.Boolean, "bool",         BooleanMarshalType),
     PrimitiveType.Byte    : immutable PrimitiveTypeInfo(PrimitiveType.Byte   , "ubyte",        "ubyte"),
     PrimitiveType.SByte   : immutable PrimitiveTypeInfo(PrimitiveType.SByte  , "byte",         "byte"),
     PrimitiveType.UInt16  : immutable PrimitiveTypeInfo(PrimitiveType.UInt16 , "ushort",       "ushort"),
@@ -69,6 +72,8 @@ enum primitiveTypes = [
     PrimitiveType.Decimal : immutable PrimitiveTypeInfo(PrimitiveType.Decimal, "Decimal",      "Decimal"),
     PrimitiveType.Object  : immutable PrimitiveTypeInfo(PrimitiveType.Object , "DotNetObject", "DotNetObject"),
 ];
+
+
 
 template Info(PrimitiveType T)
 {

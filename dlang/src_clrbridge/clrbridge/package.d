@@ -168,7 +168,7 @@ struct ClrBridge
         }
         void function(const DotNetObject obj) nothrow @nogc DebugWriteObject;
     }
-    struct Funcs
+    static struct Funcs
     {
         version (Windows)
         {
