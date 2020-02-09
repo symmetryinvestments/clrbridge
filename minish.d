@@ -301,7 +301,7 @@ struct Interpreter
         else if (cmd == "@cp")
         {
             enforceArgCount(lineIndex, cmd, args, 2);
-            copy(args[0], args[1]);
+            copyFileOrDir(args[0], args[1]);
         }
         else errorExit(lineIndex, format("unknown builtin command '%s'", cmd));
     }
@@ -344,4 +344,18 @@ string workaroundWindowsNotFindingBatFiles(string arg0)
         }
     }
     return arg0;
+}
+
+void copyFileOrDir(string from, const(char)[] to)
+{
+    if (from.isFile)
+        std.file.copy(from, to);
+    else
+    {
+        mkdirRecurse(to);
+        foreach (entry; dirEntries(from, SpanMode.shallow))
+        {
+            copyFileOrDir(entry.name, buildPath(to, entry.name.baseName));
+        }
+    }
 }
