@@ -1226,6 +1226,9 @@ static class Util
             .Replace("|", "_")
             .Replace("<", "_")
             .Replace(">", "_")
+            .Replace("{", "_")
+            .Replace("}", "_")
+            .Replace("-", "_")
             .Replace("=", "_")
             .Replace("`", "_")
             .Replace("+", "_");
