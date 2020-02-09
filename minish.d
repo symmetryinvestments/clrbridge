@@ -8,7 +8,7 @@
 // I should find a replacement for this.
 //
 import core.stdc.stdlib : exit;
-import std.array, std.file, std.format, std.path, std.process, std.stdio, std.string;
+import std.algorithm, std.array, std.file, std.format, std.path, std.process, std.stdio, std.string;
 
 int main(string[] args)
 {
@@ -313,6 +313,9 @@ struct Interpreter
             outFile = File(args[$-1], "w");
         else
             outFile = std.stdio.stdout;
+        version (Windows)
+            args[0] = workaroundWindowsNotFindingBatFiles(args[0]);
+
         auto process = spawnProcess(args, std.stdio.stdin, outFile);
         const result = wait(process);
         if (result != 0)
@@ -321,4 +324,24 @@ struct Interpreter
             exit(1);
         }
     }
+}
+
+// WORKAROUND: on windows, spawnProcess doesn't seem to find .bat programs
+// https://issues.dlang.org/show_bug.cgi?id=20571
+string workaroundWindowsNotFindingBatFiles(string arg0)
+{
+    if (!arg0.canFind("/", "\\"))
+    {
+        const result = execute(["where", arg0]);
+        if (result.status == 0)
+        {
+            const progFile = result.output.lineSplitter.front;
+            if (progFile != arg0 && !progFile.endsWith(".exe"))
+            {
+                writefln("[WORKAROUND] where '%s' resolved to '%s'", arg0, progFile);
+                return progFile;
+            }
+        }
+    }
+    return arg0;
 }

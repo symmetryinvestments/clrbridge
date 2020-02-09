@@ -37,24 +37,22 @@ rund minish.d runUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotne
 
 # execute the example that uses the code from generateDWrappers
 # rund example.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)
-# NOT WORKING ON WINDOWS!
-@notwindows rund -i=-mscorlib out/dlibs/mscorlib${libext} --compiler=${dCompiler} example.d
+rund -i=-mscorlib out/dlibs/mscorlib${libext} --compiler=${dCompiler} example.d
 
 # build the ClrCallbackHost.exe .NET executable
 rund minish.d buildClrCallbackHost dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
 # run the callbackHostExample
 # NOT WORKING ON WINDOWS!
-@notwindows rund minish.d runCallbackHostExample dotnetLoader=${dotnetLoader}
+@notwindows rund minish.d runCallbackHostExample dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
 
 # run coreclr host tests
 # rund test/coreclrhostdriver.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)
-# NOT WORKING ON WINDOWS!
-@notwindows rund -i=-mscorlib out/dlibs/mscorlib${libext} --compiler=${dCompiler} test/coreclrhostdriver.d
+rund -i=-mscorlib out/dlibs/mscorlib${libext} --compiler=${dCompiler} test/coreclrhostdriver.d
 
 # run callback host tests
 # NOT WORKING ON WINDOWS!
-@notwindows rund minish.d runCallbackHostTests
+@notwindows rund minish.d runCallbackHostTests dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
 
 #
 # The AssemblyPatcher Tool

@@ -1,8 +1,13 @@
 @windows    @default dotnetLoader ""
 @notwindows @default dotnetLoader "mono"
 
+@default dCompiler dmd
+
+@windows    @set picFlags ""
+@notwindows @set picFlags "-fPIC"
+
 @windows    @set libext .lib
 @notwindows @set libext .a
 
-dmd -shared -fPIC -of=out/callbackhostexample -I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src -i -i=-mscorlib callbackhostexample.d out/dlibs/mscorlib${libext}
+${dCompiler} -shared ${picFlags} -of=out/callbackhostexample -I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src -i -i=-mscorlib callbackhostexample.d out/dlibs/mscorlib${libext}
 ${dotnetLoader} out/ClrCallbackHost.exe out/callbackhostexample
