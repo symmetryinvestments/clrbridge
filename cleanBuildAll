@@ -1,7 +1,9 @@
 @default dotnetCompiler csc
+
 @windows    @default dotnetLoader ""
 @notwindows @default dotnetLoader "mono"
-@default dCompiler dmd
+
+@default dCompiler ldmd2
 
 @notwindows @default wget wget
 @notwindows @default unzip unzip
