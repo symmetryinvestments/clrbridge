@@ -206,7 +206,7 @@ class ExtraReflection
     public String ToDEquivalentType(String namespaceContext, Type type, out String importQualifier)
     {
         // skip these types for now
-        if (type.IsByRef)
+        if (type.IsByRef || type.IsPointer)
         {
             importQualifier = ""; // no import necessary
             return type.UnsupportedTypeRef();
@@ -596,7 +596,7 @@ class Generator : ExtraReflection
                 else
                     baseTypeForD = typeContext.TypeReferenceForD(this, baseType);
             }
-            typeContext.WriteLine("mixin __d.clrbridge.DotNetObjectMixin!q{{{0}}};", baseTypeForD);
+            typeContext.WriteLine("mixin __d.clrbridge.DotNetObjectMixin!({0});", baseTypeForD);
             // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
             // get the .NET name for this type
             GenerateMetadata(typeContext, type, genericArgs);
@@ -1217,10 +1217,14 @@ static class Util
         if (s == "module") return "module_";
         if (s == "version") return "version_";
         if (s == "function") return "function_";
+        if (s == "debug") return "debug_";
+        if (s == "package") return "package_";
         if (s == "scope") return "scope_";
         if (s == "asm") return "asm_";
         if (s == "lazy") return "lazy_";
         if (s == "alias") return "alias_";
+        if (s == "immutable") return "immutable_";
+        if (s == "super") return "super_";
         return s
             .Replace("$", "_")
             .Replace("|", "_")

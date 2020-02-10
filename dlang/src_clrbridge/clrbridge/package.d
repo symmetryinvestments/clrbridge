@@ -19,27 +19,27 @@ mixin template DotnetPrimitiveWrappers(string funcName)
     }
 }
 
-mixin template DotNetObjectMixin(string base)
+mixin template DotNetObjectMixin(BaseType)
 {
-    mixin(base ~ " __base__;");
+    BaseType __base__;
     alias __base__ this;
-    static auto nullObject() { return typeof(this)(mixin(base ~ ".nullObject")); }
+    static typeof(this) nullObject() { return typeof(this)(BaseType.nullObject); }
 }
 
 // A temporary type in order to make sure overloads work during initial development
 // even if all types are not supported yet
-struct UnsupportedType(string realTypeName) { mixin DotNetObjectMixin!"DotNetObject"; }
+struct UnsupportedType(string realTypeName) { mixin DotNetObjectMixin!DotNetObject; }
 
-struct Assembly     { mixin DotNetObjectMixin!"DotNetObject"; }
-struct Type         { mixin DotNetObjectMixin!"DotNetObject"; }
-struct ConstructorInfo { mixin DotNetObjectMixin!"DotNetObject"; }
-struct MethodInfo   { mixin DotNetObjectMixin!"DotNetObject"; }
+struct Assembly     { mixin DotNetObjectMixin!DotNetObject; }
+struct Type         { mixin DotNetObjectMixin!DotNetObject; }
+struct ConstructorInfo { mixin DotNetObjectMixin!DotNetObject; }
+struct MethodInfo   { mixin DotNetObjectMixin!DotNetObject; }
 
-struct Array(clr.PrimitiveType T) { mixin DotNetObjectMixin!"DotNetObject"; }
-struct ArrayGeneric { mixin DotNetObjectMixin!"DotNetObject"; }
+struct Array(clr.PrimitiveType T) { mixin DotNetObjectMixin!DotNetObject; }
+struct ArrayGeneric { mixin DotNetObjectMixin!DotNetObject; }
 
-struct ArrayBuilder(clr.PrimitiveType T) { mixin DotNetObjectMixin!"DotNetObject"; }
-struct ArrayBuilderGeneric { mixin DotNetObjectMixin!"DotNetObject"; }
+struct ArrayBuilder(clr.PrimitiveType T) { mixin DotNetObjectMixin!DotNetObject; }
+struct ArrayBuilderGeneric { mixin DotNetObjectMixin!DotNetObject; }
 
 // Keep this in sync with the error codes in ClrBridge.cs
 enum ClrBridgeErrorCode : ubyte
