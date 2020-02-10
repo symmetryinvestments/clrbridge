@@ -35,10 +35,30 @@ class ClrLibRunner
         String sharedLibrary = args[0];
 
         // TODO: detect which platform we are on to know how to load a shared library correctly
-        bool onLinux = true;
+        bool onWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
         EntryDelegate entry;
-        if (onLinux)
+        if (onWindows)
+        {
+            IntPtr moduleHandle = WindowsNativeMethods.LoadLibrary(sharedLibrary);
+            if (moduleHandle == IntPtr.Zero)
+            {
+                Console.WriteLine("Error: LoadLibrary '{0}' failed: {1}", sharedLibrary, Marshal.GetLastWin32Error());
+                return 1;
+            }
+            IntPtr funcPtr = WindowsNativeMethods.GetProcAddress(moduleHandle, EntryName);
+            if (funcPtr == IntPtr.Zero)
+            {
+                Int32 errorCode = Marshal.GetLastWin32Error();
+                if (errorCode == WindowsNativeMethods.ERROR_PROC_NOT_FOUND)
+                    Console.WriteLine("Error: library '{0}' is missing function '{1}'", sharedLibrary, EntryName);
+                else
+                    Console.WriteLine("Error: GetProcAddress '{0}' failed: {1}", EntryName, errorCode);
+                return 1;
+            }
+            entry = (EntryDelegate)Marshal.GetDelegateForFunctionPointer(funcPtr, typeof(EntryDelegate));
+        }
+        else
         {
             const uint RTLD_NOW = 2;
             IntPtr moduleHandle = LinuxNativeMethods.dlopen(sharedLibrary, RTLD_NOW);
@@ -54,11 +74,6 @@ class ClrLibRunner
                 return 1;
             }
             entry = (EntryDelegate)Marshal.GetDelegateForFunctionPointer(funcPtr, typeof(EntryDelegate));
-        }
-        else
-        {
-            Console.WriteLine("Error: unsupported platform");
-            return 1;
         }
         IntPtr createDelegateFuncPtr = Marshal.GetFunctionPointerForDelegate(new CreateDelegateDelegate(CreateDelegate));
         return entry(createDelegateFuncPtr, args.Length, args);
@@ -142,29 +157,16 @@ static class LinuxNativeMethods
     public static extern IntPtr dlsym(IntPtr handle, String symbol);
 }
 
-
-/*
-TODO: support for windows
 static class WindowsNativeMethods
 {
-     [DllImport("kernel32.dll", SetLastError = true)]
-     public static extern IntPtr LoadLibrary(String dllToLoad);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern IntPtr LoadLibrary(String dllToLoad);
 
-     [DllImport("kernel32.dll", SetLastError = true)]
-     public static extern IntPtr GetProcAddress(IntPtr hModule, String procedureName);
+    public const UInt32 ERROR_PROC_NOT_FOUND = 127;
 
-     [DllImport("kernel32.dll", SetLastError = true)]
-     public static extern bool FreeLibrary(IntPtr hModule);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+    public static extern IntPtr GetProcAddress(IntPtr module, String name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool FreeLibrary(IntPtr module);
 }
-The unmanaged library should be loaded by calling LoadLibrary:
-
-IntPtr moduleHandle = LoadLibrary("path/to/library.dll");
-Get a pointer to a function in the dll by calling GetProcAddress:
-
-IntPtr ptr = GetProcAddress(moduleHandle, methodName);
-Cast this ptr to a delegate of type TDelegate:
-
-TDelegate func = Marshal.GetDelegateForFunctionPointer(
-    ptr, typeof(TDelegate)) as TDelegate;
-
-*/

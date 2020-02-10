@@ -45,16 +45,14 @@ rund -i=-mscorlib out/dlibs/mscorlib${libext} --compiler=${dCompiler} dlang/exam
 rund minish.d buildClrCallbackHost dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
 
 # run the callbackHostExample
-# NOT WORKING ON WINDOWS!
-@notwindows rund minish.d dlang/runCallbackHostExample dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
+rund minish.d dlang/runCallbackHostExample dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
 
 # run coreclr host tests
 # rund test/coreclrhostdriver.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)
 rund -i=-mscorlib out/dlibs/mscorlib${libext} --compiler=${dCompiler} test/coreclrhostdriver.d
 
 # run callback host tests
-# NOT WORKING ON WINDOWS!
-@notwindows rund minish.d runCallbackHostTests dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
+rund minish.d runCallbackHostTests dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
 
 #
 # The AssemblyPatcher Tool

@@ -3,7 +3,7 @@ import cstring;
 import clrbridge;
 import clrbridge.callbackhost;
 
-extern (C) int _clrCallbackHostEntry(CreateDelegate createDelegate, int argc, CString* argv/*, CString* envp*/)
+export extern (C) int _clrCallbackHostEntry(CreateDelegate createDelegate, int argc, CString* argv/*, CString* envp*/)
 {
     import core.runtime;
     try
