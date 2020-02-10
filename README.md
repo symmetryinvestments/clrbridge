@@ -108,3 +108,19 @@ Currently I use a sequence of calls to create/pass arrays to the CLR.  Instead, 
 ### Idea: Using D's GC to release C# object references
 
 All .NET Object references returned by ClrBridge are "pinned", meaning that C# will not garbage collect them.  It is up to the D code to release object references in order for the Clr to collect them.  Right now the D application can call `globalClrBridge.release` to release a reference, however, I'd like to see if it's feasible to have the D garbage collector call this automatically when these C# objects are out of scope and no longer referenced. I believe this will require wrapping the .NET object references to D objects allocated on the heap.
+
+# TODO
+
+#### ClrBridge Assembly Resolution
+
+Add support in ClrBridge to resolve assemblies when they are missing.  This is the same thing that `ClrBridgeCodegen` does with
+
+```
+        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(AssemblyResolveCallback);
+```
+
+Might provide a function in ClrBridge.dll that allows the client to add assembly paths.
+
+#### Dll FileName Info in Generated Code
+
+I should include some information about the original DLL in the generated Code.  Information that could help ClrBridge find the dll at runtime.
