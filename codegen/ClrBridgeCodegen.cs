@@ -1183,6 +1183,48 @@ class ExtraTypeInfo
     }
 }
 
+struct DKeyword
+{
+    static readonly String[] Strings = new String[] {
+        "alias", "align", "asm", "assert",
+        "body", "break",
+        "cast", "continue",
+        "debug",
+        "export",
+        "final", "finally", "function",
+        "immutable", "import",
+        "lazy",
+        "module",
+        "null",
+        "package",
+        "return",
+        "scope", "shared", "super",
+        "template", "this", "typeof",
+        "version",
+    };
+    static readonly Dictionary<String,DKeyword> staticMap;
+    static DKeyword()
+    {
+        staticMap = new Dictionary<String,DKeyword>();
+        foreach (String str in Strings)
+        {
+            staticMap.Add(str, new DKeyword(str));
+        }
+    }
+    public static bool TryGet(String keywordString, out DKeyword outKeyword)
+    {
+        return staticMap.TryGetValue(keywordString, out outKeyword);
+    }
+
+    public readonly String str;
+    public readonly String escaped;
+    DKeyword(String str)
+    {
+        this.str = str;
+        this.escaped = str + "_";
+    }
+}
+
 static class Util
 {
     static readonly Char[] DotCharArray = new Char[] {'.'};
@@ -1209,22 +1251,19 @@ static class Util
         }
         return String.Join(".", parts);
     }
+    static readonly DKeyword[] DKeywords = new DKeyword[] {
+    };
     // add a trailing '_' to keywords
     public static String ToDIdentifier(this String s)
     {
         Debug.Assert(!s.Contains("."), String.Format("identifier '{0}' contains '.' so need to use ToDQualifiedIdentifier", s));
-        if (s == "align") return "align_";
-        if (s == "module") return "module_";
-        if (s == "version") return "version_";
-        if (s == "function") return "function_";
-        if (s == "debug") return "debug_";
-        if (s == "package") return "package_";
-        if (s == "scope") return "scope_";
-        if (s == "asm") return "asm_";
-        if (s == "lazy") return "lazy_";
-        if (s == "alias") return "alias_";
-        if (s == "immutable") return "immutable_";
-        if (s == "super") return "super_";
+        {
+            DKeyword keyword;
+            if (DKeyword.TryGet(s, out keyword))
+                return keyword.escaped;
+        }
+        // TODO: might be faster/better to use StringBuilder with an initial capacity
+        //       test performance before refactoring to see if it makes a difference
         return s
             .Replace("$", "_")
             .Replace("|", "_")
