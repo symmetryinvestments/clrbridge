@@ -34,8 +34,11 @@ class ClrLibRunner
         }
         String sharedLibrary = args[0];
 
-        // TODO: detect which platform we are on to know how to load a shared library correctly
-        bool onWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        // TODO: might want to make this a command-line option (--dlopen or --loadlibrary)?
+        // TODO: need a way to detect whether or not this mechanism is supported
+        //       maybe I should use runtime reflection?
+        //bool onWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        bool onWindows = Directory.Exists("C:\\Windows\\System32");
 
         EntryDelegate entry;
         if (onWindows)

@@ -60,4 +60,4 @@ rund minish.d runCallbackHostTests dotnetLoader=${dotnetLoader} dCompiler=${dCom
 @notwindows @set downloadCecilArgs "wget=${wget} unzip=${unzip}"
 @windows    @set downloadCecilArgs 7z=${7z}
 rund minish.d assemblypatcher/downloadCecil ${downloadCecilArgs}
-rund minish.d assemblypatcher/build
+rund minish.d assemblypatcher/build dotnetCompiler=${dotnetCompiler}
