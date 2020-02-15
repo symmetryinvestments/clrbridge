@@ -28,7 +28,7 @@ int main(string[] args)
        usage();
        return 1;
     }
-    auto chunkSize = args[0].to!size_t();
+    auto chunkSize = args[0].to!ulong();
     auto srcDir = args[1];
     auto objDir = args[2];
     const firstDashDash = args.indexOf("--", 3);
@@ -49,7 +49,7 @@ int main(string[] args)
     return go(srcDir, objDir, chunkSize, commonArgs, compileArgs, linkArgs);
 }
 
-int go(string srcDir, string objDir, size_t chunkSize, string[] commonArgs, string[] compileArgs, string[] linkArgs)
+int go(string srcDir, string objDir, ulong chunkSize, string[] commonArgs, string[] compileArgs, string[] linkArgs)
 {
     auto files = dirEntries(srcDir, SpanMode.depth)
         .filter!(e => e.name.endsWith(".d"))
@@ -66,16 +66,19 @@ int go(string srcDir, string objDir, size_t chunkSize, string[] commonArgs, stri
         for (size_t nextGroupIndex = 0;; nextGroupIndex++)
         {
             const startFileIndex = fileIndex;
-            size_t combinedSize = 0;
-            while (fileIndex < files.length && combinedSize < chunkSize)
+            ulong combinedSize = 0;
+            for (;fileIndex < files.length; fileIndex++)
             {
                 combinedSize += std.file.getSize(files[fileIndex]);
-                fileIndex++;
+                if (combinedSize > chunkSize)
+                {
+                    if (fileIndex > startFileIndex + 1) // remove last file if there is more than 1
+                        fileIndex--;
+                    break;
+                }
             }
             if (startFileIndex == fileIndex)
                 break;
-            if (fileIndex > startFileIndex + 1) // remove last file if there is more than 1
-                fileIndex--;
             groups.put(CompileGroup(files[startFileIndex..fileIndex],
                 buildPath(objDir, ("group%s" ~ objExt).format(nextGroupIndex))));
         }

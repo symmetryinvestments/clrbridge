@@ -4,8 +4,10 @@
 @default libs "mscorlib"
 
 # limiting on windows much more since the compiler is usually 32 bit and has much less available memory
-@windows    @default maxCompileSet  5000000
-@notwindows @default maxCompileSet 30000000
+# compilechunker can no longer be used because it causes linker errors with the __base__ function inside the clrbridge DotNetObjectMixin
+# so to disable it, I'm just settings the size to very very large
+@windows    @default maxCompileSet 9999999999
+@notwindows @default maxCompileSet 9999999999
 
 @set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src"
 

@@ -19,11 +19,17 @@ mixin template DotnetPrimitiveWrappers(string funcName)
     }
 }
 
+
 mixin template DotNetObjectMixin(BaseType)
 {
-    BaseType __base__;
+    void* __handle__;
+    // We use a function that converts to the BaseType rather than including the BaseType as a
+    // field to avoid the "no size because of forward reference" issues
+    // However this method causes a different issue. There appears to be a bug where this __base__
+    // function sometimes does not get code-generated when using the compilechunker.
+    inout(BaseType) __base__() nothrow @nogc inout { return inout BaseType(__handle__); };
     alias __base__ this;
-    static typeof(this) nullObject() { return typeof(this)(BaseType.nullObject); }
+    static typeof(this) nullObject() { return typeof(this)(null); }
 }
 
 // A temporary type in order to make sure overloads work during initial development

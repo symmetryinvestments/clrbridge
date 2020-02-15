@@ -94,10 +94,10 @@ struct DotNetObject
         enum typeSpec = TypeSpec("mscorlib", "System.Object", null);
     }
 
-    private void* _ptr;
-    void* ptr() const { return cast(void*)_ptr; }
+    private void* __handle__;
+    void* handle() const { return cast(void*)__handle__; }
     static DotNetObject nullObject() { return typeof(this)(null); }
-    bool isNull() const { return _ptr is null; }
+    bool isNull() const { return __handle__ is null; }
 }
 
 struct Enum(T)

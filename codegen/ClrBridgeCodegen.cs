@@ -415,6 +415,7 @@ class Generator : ExtraReflection
 
         using (StreamWriter writer = new StreamWriter(new FileStream(Path.Combine(tempPackageDir, "all.d"), FileMode.Create, FileAccess.Write, FileShare.Read)))
         {
+            writer.WriteLine("module {0}.all;", thisAssemblyPackageName);
             foreach (DModule module in moduleMap.Values)
             {
                 writer.WriteLine("public import {0};", module.fullName);
