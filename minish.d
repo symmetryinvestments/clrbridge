@@ -277,13 +277,7 @@ struct Interpreter
         {
             foreach (arg; args)
             {
-                if (exists(arg))
-                {
-                    if (isFile(arg))
-                        remove(arg);
-                    else
-                        rmdirRecurse(arg);
-                }
+                rmIfExists(arg);
             }
         }
         else if (cmd == "@mkdir")
@@ -357,5 +351,60 @@ void copyFileOrDir(string from, const(char)[] to)
         {
             copyFileOrDir(entry.name, buildPath(to, entry.name.baseName));
         }
+    }
+}
+
+// TODO: update phobos std.file.remove to do this
+void removeFile(DirEntry entry)
+{
+    try { std.file.remove(entry.name); }
+    catch (FileException e)
+    {
+        version (Windows)
+        {
+            // TODO: fix phobos to do this
+            import core.sys.windows.winnt : FILE_ATTRIBUTE_READONLY;
+            import core.sys.windows.winerror : ERROR_ACCESS_DENIED;
+            version (Windows)
+            {
+                if (e.errno == ERROR_ACCESS_DENIED)
+                {
+                    setAttributes(entry.name, entry.attributes & (~FILE_ATTRIBUTE_READONLY));
+                    std.file.remove(entry.name);
+                    return;
+                }
+            }
+        }
+        throw e;
+    }
+}
+
+// remove a file or directory if it exists
+void rmIfExists(const(char)[] path)
+{
+    if (exists(path))
+        rm(DirEntry(cast(string)path));
+}
+// remove a file or directory
+void rm(DirEntry entry)
+{
+    if (entry.isFile)
+    {
+        removeFile(entry);
+    }
+    else if (entry.isSymlink)
+    {
+        version (Windows)
+            rmdir(entry.name);
+        else
+            removeFile(entry);
+    }
+    else
+    {
+        foreach (DirEntry subEntry; dirEntries(entry.name, SpanMode.depth, false))
+        {
+            rm(subEntry);
+        }
+        rmdir(entry.name);
     }
 }
