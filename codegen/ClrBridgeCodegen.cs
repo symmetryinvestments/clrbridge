@@ -127,7 +127,7 @@ static class ClrBridgeCodegen
                 Console.WriteLine("Error: assembly string must start with 'file:' or 'gac:' but got '{0}'", assemblyString);
                 return 1;
             }
-            TempPackage tempPackage = new Generator(sharedAssemblyMap, assembly, outputDir).GenerateModules(false);
+            TempPackage tempPackage = new Generator(sharedAssemblyMap, assembly, outputDir).GenerateModules(null, false);
             if (!tempPackage.IsNull())
                 newlyGeneratedAssemblies.Add(tempPackage);
         }
@@ -140,7 +140,7 @@ static class ClrBridgeCodegen
                 {
                     if (pair.Value.state == AssemblyState.Initial)
                     {
-                        TempPackage tempPackage = new Generator(sharedAssemblyMap, pair.Key, outputDir).GenerateModules(false);
+                        TempPackage tempPackage = new Generator(sharedAssemblyMap, pair.Key, outputDir).GenerateModules(null, false);
                         if (!tempPackage.IsNull())
                             newlyGeneratedAssemblies.Add(tempPackage);
                         Debug.Assert(pair.Value.state == AssemblyState.Generated);
@@ -366,19 +366,19 @@ class Generator : ExtraReflection
     }
 
     // returns: the temporary directory of the assembly if it was newly generated
-    public TempPackage GenerateModules(bool force)
+    public TempPackage GenerateModules(TypeSubset typeSubset, bool force)
     {
         ExtraAssemblyInfo thisAssemblyInfo = GetExtraAssemblyInfo(thisAssembly);
         Debug.Assert(thisAssemblyInfo.state == AssemblyState.Initial);
         thisAssemblyInfo.state = AssemblyState.Generating;
-        Boolean result = GenerateModules2(force);
+        Boolean result = GenerateModules2(typeSubset, force);
         Debug.Assert(thisAssemblyInfo.state == AssemblyState.Generating);
         thisAssemblyInfo.state = AssemblyState.Generated;
         return result ? new TempPackage(tempPackageDir, finalPackageDir) : TempPackage.NullValue();
     }
 
     // returns: true if it is newly generated, false if it is already generated
-    Boolean GenerateModules2(bool force)
+    Boolean GenerateModules2(TypeSubset typeSubset, bool force)
     {
         // hash the assembly, so we can check if it is already generated
         // and then save it once we are done so it can be checked later
@@ -1391,4 +1391,19 @@ static class HexString
         }
         return bytes;
     }
+}
+
+
+class PartialType
+{
+    public readonly Type type;
+    public PartialType(Type type)
+    {
+        this.type = type;
+    }
+}
+class TypeSubset
+{
+    List<Type> completeTypes = new List<Type>();
+    List<PartialType> partialTypes = new List<PartialType>();
 }
