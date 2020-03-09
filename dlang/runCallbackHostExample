@@ -12,5 +12,5 @@
 @windows    @set shlibext .dll
 @notwindows @set shlibext .so
 
-${dCompiler} -shared ${picFlags} -of=../out/callbackhostexample${shlibext} -I=../dlang/src_hresult -I=../dlang/src_cstring -I=../dlang/src_clr -I=../dlang/src_clrbridge -I=../out/dlibs/src -i -i=-mscorlib callbackhostexample.d ../out/dlibs/mscorlib${libext}
+${dCompiler} -shared ${picFlags} -of=../out/callbackhostexample${shlibext} -I=../dlang/src_hresult -I=../dlang/src_cstring -I=../dlang/src_clr -I=../dlang/src_clrbridge -I=../out/codegen/src/dlang -i -i=-mscorlib callbackhostexample.d ../out/codegen/dlang/mscorlib${libext}
 ${dotnetLoader} ../out/ClrCallbackHost.exe ../out/callbackhostexample${shlibext}

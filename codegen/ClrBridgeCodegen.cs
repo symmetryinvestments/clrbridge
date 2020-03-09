@@ -284,21 +284,23 @@ class ExtraReflection
 
 class Generator : ExtraReflection
 {
-    readonly String outputDir;
+    readonly String mainOutputDir;
+    readonly String dlangOutputDir;
     readonly Dictionary<String,DModule> moduleMap;
     readonly Dictionary<String,DModule> moduleUpperCaseMap;
     readonly String thisAssemblyPackageName; // cached version of GetExtraAssemblyInfo(thisAssembly).packageName
     readonly String finalPackageDir;
     readonly String tempPackageDir;
 
-    public Generator(Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, String outputDir)
+    public Generator(Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, String mainOutputDir)
         : base(sharedAssemblyMap, thisAssembly)
     {
-        this.outputDir = outputDir;
+        this.mainOutputDir = mainOutputDir;
+        this.dlangOutputDir = Path.Combine(mainOutputDir, "dlang");
         this.moduleMap = new Dictionary<String,DModule>();
         this.moduleUpperCaseMap = new Dictionary<String,DModule>();
         this.thisAssemblyPackageName = GetExtraAssemblyInfo(thisAssembly).packageName;
-        this.finalPackageDir = Path.Combine(outputDir, this.thisAssemblyPackageName);
+        this.finalPackageDir = Path.Combine(dlangOutputDir, this.thisAssemblyPackageName);
         this.tempPackageDir = this.finalPackageDir + ".generating";
     }
 

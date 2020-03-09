@@ -13,5 +13,5 @@
 @notwindows @set shlibext .so
 
 @mkdir out/test
-${dCompiler} -shared ${picFlags} -of=out/test/callbackhostdriver${shlibext} -I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src -I=test -I=test/tests -i -i=-mscorlib test/callbackhostdriver.d out/dlibs/mscorlib${libext}
+${dCompiler} -shared ${picFlags} -of=out/test/callbackhostdriver${shlibext} -I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/codegen/src/dlang -I=test -I=test/tests -i -i=-mscorlib test/callbackhostdriver.d out/codegen/dlang/mscorlib${libext}
 ${dotnetLoader} out/ClrCallbackHost.exe out/test/callbackhostdriver${shlibext}
