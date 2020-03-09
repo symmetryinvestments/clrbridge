@@ -21,7 +21,21 @@ static class ClrBridgeCodegen
     {
         Console.WriteLine("Usage: ClrBridgeCodegen.exe [--options...] <DotNetAssembly> <OutputDir>");
         Console.WriteLine("Options:");
-        Console.WriteLine("  --shallow   Only generate for the given assembly, ignore assembly references");
+        Console.WriteLine("  --shallow      Only generate for the given assembly, ignore assembly references");
+        // TODO: add an option that says to use whatever config is already in outputDir
+        //       in this case we verify that a config file exists in .metadat/config
+        Console.WriteLine("  --config file  Specify a config file.  Must be the same file for each invocation");
+        Console.WriteLine("                 on the same <OutputDir>.");
+    }
+    static String GetOptionArg(String[] args, ref UInt32 optionIndex)
+    {
+        optionIndex++;
+        if (optionIndex >= args.Length)
+        {
+            Console.WriteLine("Error: option '{0}' requires an argument", args[optionIndex - 1]);
+            throw new AlreadyReportedException();
+        }
+        return args[optionIndex];
     }
     public static Int32 Main(String[] args)
     {
@@ -31,6 +45,7 @@ static class ClrBridgeCodegen
     public static Int32 Main2(String[] args)
     {
         Boolean shallow = false;
+        String configFile = null;
         List<String> nonOptionArgs = new List<String>();
         for (UInt32 i = 0; i < args.Length; i++)
         {
@@ -39,6 +54,13 @@ static class ClrBridgeCodegen
                 nonOptionArgs.Add(arg);
             else if (arg == "--shallow")
                 shallow = true;
+            //
+            // Any options that change how the code is generated must be contained within the config file
+            // the config file is copied to the output directory and is used to on future invocations
+            // to ensure that the exact same configuration is used each time.
+            //
+            else if (arg == "--config")
+                configFile = GetOptionArg(args, ref i);
             else
             {
                 Console.WriteLine("Error: unknown command-line option '{0}'", arg);
@@ -55,6 +77,36 @@ static class ClrBridgeCodegen
         Console.WriteLine("assembly : {0}", assemblyString);
         Console.WriteLine("outputDir: {0}", outputDir);
         Console.WriteLine("shallow  : {0}", shallow);
+
+        // check output dir and config file
+        String outputMetadataDir = Path.Combine(outputDir, ".metadata");
+        String configMetadataCopy = Path.Combine(outputMetadataDir, "config");
+
+        Boolean alreadyHaveConfig = File.Exists(configMetadataCopy);
+        if (!alreadyHaveConfig)
+        {
+            Directory.CreateDirectory(outputMetadataDir);
+            if (configFile != null)
+                File.Copy(configFile, configMetadataCopy);
+            else
+                File.Create(configMetadataCopy).Dispose();
+        }
+
+        // TODO: do we check that the configs match even if alreadyHaveConfig is false???
+        // if (alreadyHaveConfig)
+        {
+            String existingConfigText = File.ReadAllText(configMetadataCopy);
+            String newConfigText = (configFile == null) ? "" : File.ReadAllText(configFile);
+            if (existingConfigText != newConfigText)
+            {
+                if (configFile == null)
+                    Console.WriteLine("Error: missing --config file that was given on a previous invocation to output directory '{0}'", outputDir);
+                else
+                    Console.WriteLine("Error: new config file '{0}' does not match existing config in output directory '{1}'", configFile, outputDir);
+                throw new AlreadyReportedException();
+            }
+            Console.WriteLine("[DEBUG] both configs match ({0} bytes)", newConfigText.Length);
+        }
 
         AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(AssemblyResolveCallback);
 
