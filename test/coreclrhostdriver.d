@@ -5,7 +5,7 @@
 //!importPath ../dlang/src_coreclr
 //!importPath ../dlang/src_clr
 //!importPath ../dlang/src_clrbridge
-//!importPath ../out/dlibs/src
+//!importPath ../out/codegen/dlang/src
 //!importPath tests
 //!debug
 //!debugSymbols

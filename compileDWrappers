@@ -9,7 +9,7 @@
 @windows    @default maxCompileSet 9999999999
 @notwindows @default maxCompileSet 9999999999
 
-@set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/dlibs/src"
+@set includePaths "-I=dlang/src_hresult -I=dlang/src_cstring -I=dlang/src_coreclr -I=out/DerelictUtil/source -I=dlang/src_clr -I=dlang/src_clrbridge -I=out/codegen/dlang/src"
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # -lib required when using dmd, and -lib cannot be used when using ldmd2
@@ -18,5 +18,5 @@
 #@set extraCompileArgs -lib
 
 @scope @foreach lib ${libs}
-    rund dlang/compilechunker.d ${maxCompileSet} out/dlibs/src/${lib} out/dlibs/obj/${lib} ${dCompiler} -- ${extraCompileArgs} ${includePaths} -- -lib -of=out/dlibs/${lib}
+    rund dlang/compilechunker.d ${maxCompileSet} out/codegen/dlang/src/${lib} out/codegen/dlang/obj/${lib} ${dCompiler} -- ${extraCompileArgs} ${includePaths} -- -lib -of=out/codegen/dlang/${lib}
 @end
