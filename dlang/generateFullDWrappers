@@ -1,0 +1,7 @@
+@windows    @default dotnetLoader ""
+@notwindows @default dotnetLoader "mono"
+
+@mkdir ../out/codegen/dlang/src
+
+${dotnetLoader} ../out/ClrBridgeCodegen.exe gac:mscorlib ../out/codegen/dlang/src
+${dotnetLoader} ../out/ClrBridgeCodegen.exe "gac:System, Version=2.0.3600.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" ../out/codegen/dlang/src

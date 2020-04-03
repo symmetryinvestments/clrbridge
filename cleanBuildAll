@@ -30,12 +30,9 @@ rund -g --compiler=${dCompiler} dlang/noCodegenExample.d
 rund minish.d buildClrBridgeCodegen dotnetCompiler=${dotnetCompiler}
 
 # invoke ClrBridgeCodegen.exe to generate D wrapper code for common .NET libraries
-rund minish.d generateDWrappers dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
-
-rund minish.d compileDWrappers dCompiler=${dCompiler}
-
-# run unit tests
-rund minish.d runUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
+rund minish.d dlang/generateFullDWrappers dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader}
+rund minish.d dlang/compileFullDWrappers dCompiler=${dCompiler}
+rund minish.d dlang/runFullUnitTests dotnetCompiler=${dotnetCompiler} dotnetLoader=${dotnetLoader} dCompiler=${dCompiler}
 
 # execute the example that uses the code from generateDWrappers
 # rund dlang/example.d (use this when rund supports -i=-mscorlib and windows/linux library extensions)
