@@ -30,6 +30,7 @@ private
             ~ ",/usr/share/dotnet/shared/Microsoft.NETCore.App/3.1.0/libcoreclr.so"
             ~ ",/nix/store/b0v83nvcsd49n3awa9v4aa2vmxfz5308-dotnet-sdk-2.2.401/shared/Microsoft.NETCore.App/2.2.6/libcoreclr.so"
             ~ ",/nix/store/d7slvf46fkgf95k7k7qhgl6nnxmx7jd4-dotnet-sdk-2.2.401/shared/Microsoft.NETCore.App/2.2.6/libcoreclr.so"
+            ~ ",/nix/store/f3cvcvf900h9svrn52dj2cnz63zy3f23-dotnet-sdk-3.1.101/shared/Microsoft.NETCore.App/3.1.1/libcoreclr.so"
             ;
     else
         static assert(0, "Need to implement CoreCLR libNames for this operating system.");
