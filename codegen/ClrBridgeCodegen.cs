@@ -92,13 +92,14 @@ static class ClrBridgeCodegen
                 File.Create(configMetadataCopy).Dispose();
         }
 
+        String configText = (configFile == null) ? "" : File.ReadAllText(configFile);
+
         // note that we don't have to check if configs match if we just copied it, but
         // it shouldn't do much harm to check anyway
         // if (alreadyHaveConfig)
         {
             String existingConfigText = File.ReadAllText(configMetadataCopy);
-            String newConfigText = (configFile == null) ? "" : File.ReadAllText(configFile);
-            if (existingConfigText != newConfigText)
+            if (existingConfigText != configText)
             {
                 if (configFile == null)
                     Console.WriteLine("Error: missing --config file that was given on a previous invocation to output directory '{0}'", outputDir);
@@ -106,8 +107,10 @@ static class ClrBridgeCodegen
                     Console.WriteLine("Error: new config file '{0}' does not match existing config in output directory '{1}'", configFile, outputDir);
                 throw new AlreadyReportedException();
             }
-            Console.WriteLine("[DEBUG] both configs match ({0} bytes)", newConfigText.Length);
+            Console.WriteLine("[DEBUG] both configs match ({0} bytes)", configText.Length);
         }
+
+        Config config = (configFile == null) ? new Config() : new ConfigParser(configFile, configText).Parse();
 
         AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(AssemblyResolveCallback);
 
@@ -190,6 +193,128 @@ static class ClrBridgeCodegen
         Console.WriteLine("[DEBUG]     => NOT FOUND!");
         return null;
     }
+}
+
+class ConfigParser
+{
+    static readonly Char[] NewlineArray = new Char[] {'\n'};
+
+    public readonly String filename;
+    public readonly String text;
+    Int32 lineNumber;
+    AssemblyConfig currentAssembly;
+    TypeConfig currentType;
+    public ConfigParser(String filename, String text)
+    {
+        this.filename = filename;
+        this.text = text;
+    }
+    Exception ParseException(String msg)
+    {
+        throw new Exception(String.Format("{0}(line {1}): {2}", filename, lineNumber, msg));
+    }
+    public Config Parse()
+    {
+        Config config = new Config();
+        String[] lines = text.Split(NewlineArray);
+        if (lines != null)
+        {
+            for (int i = 0; i < lines.Length; i++)
+            {
+                this.lineNumber = i + 1;
+                ParseLine(config, lines[i]);
+            }
+        }
+        return config;
+    }
+    public void ParseLine(Config config, String line)
+    {
+        String remaining = line;
+        String directive = Peel(ref remaining);
+        if (directive.Length == 0) return;
+        if (directive == "Assembly")
+        {
+            String name = Peel(ref remaining);
+            if (name.Length == 0)
+                throw ParseException("the 'Assembly' directive requires a name");
+            EnforceDirectiveDone(directive, remaining);
+
+            this.currentType = null;
+            this.currentAssembly = new AssemblyConfig(name);
+            config.assemblyMap.Add(name, this.currentAssembly);
+        }
+        else if (directive == "Type")
+        {
+            String name = Peel(ref remaining);
+            if (name.Length == 0)
+                throw ParseException("the 'Type' directive requires a name");
+            EnforceDirectiveDone(directive, remaining);
+            if (currentAssembly == null)
+                throw ParseException("the 'Type' directive cannot appear before an 'Assembly' directive");
+            this.currentType = new TypeConfig(name);
+            this.currentAssembly.typeMap.Add(name, this.currentType);
+        }
+        else throw ParseException(String.Format("Unknown directive '{0}'", directive));
+    }
+    void EnforceDirectiveDone(String directive, String remaining)
+    {
+        String afterPeel = remaining;
+        String more = Peel(ref afterPeel);
+        if (more.Length != 0)
+            throw ParseException(String.Format("too many arguments for the '{0}' directive, extra is: {1}", directive, remaining));
+    }
+    String Peel(ref String line)
+    {
+        Int32 start = line.Skip(0, ' ');
+        Int32 end = line.Until(start, ' ');
+        if (start == end)
+        {
+            line = "";
+            return "";
+        }
+        String result = line.Substring(start, end - start);
+        line = line.Substring(end);
+        return result;
+    }
+}
+static class ParseExtensions
+{
+    public static Int32 Skip(this String s, Int32 offset, Char c)
+    {
+        for (;; offset++) {
+            if (offset >= s.Length || s[offset] != c)
+                return offset;
+        }
+    }
+    public static Int32 Until(this String s, Int32 offset, Char c)
+    {
+        for (;; offset++) {
+            if (offset >= s.Length || s[offset] == c)
+                return offset;
+        }
+    }
+}
+
+class TypeConfig
+{
+    public readonly String name;
+    public TypeConfig(String name)
+    {
+        this.name = name;
+    }
+}
+class AssemblyConfig
+{
+    public readonly String name;
+    public readonly Dictionary<String,TypeConfig> typeMap = new Dictionary<String,TypeConfig>();
+    public AssemblyConfig(String name)
+    {
+        this.name = name;
+    }
+}
+class Config
+{
+    public readonly Dictionary<String,AssemblyConfig> assemblyMap = new Dictionary<String,AssemblyConfig>();
 }
 
 struct TempPackage
