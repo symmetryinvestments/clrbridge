@@ -4,6 +4,12 @@ using System.Reflection;
 
 enum ListKind { Whitelist, Blacklist }
 
+class ConfigParseException : Exception
+{
+    public ConfigParseException(String msg) : base(msg)
+    { }
+}
+
 class ConfigParser
 {
     static readonly Char[] NewlineArray = new Char[] {'\n'};
@@ -11,6 +17,7 @@ class ConfigParser
     readonly String filename;
     readonly String text;
     UInt32 lineNumber;
+    Config config;
     AssemblyConfig currentAssembly;
     TypeConfig currentType;
     public ConfigParser(String filename, String text)
@@ -18,31 +25,49 @@ class ConfigParser
         this.filename = filename;
         this.text = text;
     }
-    Exception ParseException(String msg)
+    ConfigParseException ParseException(String msg)
     {
-        throw new Exception(String.Format("{0}(line {1}): {2}", filename, lineNumber, msg));
+        throw new ConfigParseException(String.Format("{0}(line {1}): {2}", filename, lineNumber, msg));
     }
     public Config Parse()
     {
-        Config config = new Config(filename, true);
+        if (config != null) throw new InvalidOperationException();
         String[] lines = text.Split(NewlineArray);
         if (lines != null)
         {
             for (int i = 0; i < lines.Length; i++)
             {
                 this.lineNumber = (UInt32)(i + 1);
-                ParseLine(config, lines[i]);
+                ParseLine(lines[i]);
             }
         }
+        if (config == null)
+            throw ParseException("missing the 'Assemblies' directive");
         return config;
     }
-    public void ParseLine(Config config, String line)
+    public void ParseLine(String line)
     {
         String remaining = line;
         String directive = Peel(ref remaining);
         if (directive.Length == 0 || directive.StartsWith("#")) return;
-        if (directive == "Assembly")
+        if (directive == "Assemblies")
         {
+            if (config != null)
+                throw ParseException("found multiple 'Assemblies' directive");
+            String optionalArg = Peel(ref remaining);
+            Boolean whitelist;
+            if (optionalArg.Length == 0)
+                whitelist = false;
+            else if (optionalArg.Equals("Whitelist", StringComparison.Ordinal))
+                whitelist = true;
+            else
+                throw ParseException(String.Format("invalid argument '{0}' for 'Assemblies' directive, expecte 'Whitelist' or nothing", optionalArg));
+            EnforceDirectiveDone(directive, remaining);
+            config = new Config(filename, whitelist);
+        }
+        else if (directive == "Assembly")
+        {
+            EnforceHaveAssembliesConfig(directive);
             String name = Peel(ref remaining);
             if (name.Length == 0)
                 throw ParseException("the 'Assembly' directive requires a name");
@@ -58,12 +83,11 @@ class ConfigParser
         }
         else if (directive == "Type")
         {
+            EnforceHaveAssembly(directive);
             String name = Peel(ref remaining);
             if (name.Length == 0)
                 throw ParseException("the 'Type' directive requires a name");
             EnforceDirectiveDone(directive, remaining);
-            if (currentAssembly == null)
-                throw ParseException("the 'Type' directive cannot appear before an 'Assembly' directive");
             this.currentType = new TypeConfig(lineNumber, name);
             this.currentAssembly.typeMap.Add(name, this.currentType);
         }
@@ -74,6 +98,17 @@ class ConfigParser
         if (str.Equals("Whitelist", StringComparison.Ordinal)) return ListKind.Whitelist;
         if (str.Equals("Blacklist", StringComparison.Ordinal)) return ListKind.Blacklist;
         throw ParseException(String.Format("expected 'Whitelist' or 'Blacklist' but got '{0}'", str));
+    }
+    void EnforceHaveAssembliesConfig(String directive)
+    {
+        if (config == null)
+            throw ParseException(String.Format("directive '{0}' must appear after the 'Assemblies' directive", directive));
+    }
+    void EnforceHaveAssembly(String directive)
+    {
+        EnforceHaveAssembliesConfig(directive);
+        if (currentAssembly == null)
+            throw ParseException(String.Format("directive '{0}' must appear after an 'Assembly' directive", directive));
     }
     void EnforceDirectiveDone(String directive, String remaining)
     {
@@ -166,14 +201,14 @@ class AssemblyConfig
 class Config
 {
     public readonly String filename;
-    public readonly Boolean whitelistAssemblies;
+    public readonly Boolean whitelist;
     public readonly Dictionary<String,AssemblyConfig> assemblyMap = new Dictionary<String,AssemblyConfig>();
-    public Config(String filename, Boolean whitelistAssemblies)
+    public Config(String filename, Boolean whitelist)
     {
         this.filename = filename;
-        this.whitelistAssemblies = whitelistAssemblies;
+        this.whitelist = whitelist;
     }
-    public AssemblyConfig GetAssemblyConfig(Assembly assembly)
+    public AssemblyConfig TryGetAssemblyConfig(Assembly assembly)
     {
         AssemblyConfig assemblyConfig;
         if (assemblyMap.TryGetValue(assembly.GetName().Name, out assemblyConfig))

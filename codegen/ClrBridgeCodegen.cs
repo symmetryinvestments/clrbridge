@@ -111,7 +111,16 @@ static class ClrBridgeCodegen
             Console.WriteLine("[DEBUG] both configs match ({0} bytes)", configText.Length);
         }
 
-        Config config = (configFile == null) ? new Config("", false) : new ConfigParser(configFile, configText).Parse();
+        Config config;
+        try
+        {
+            config = (configFile == null) ? new Config("", false) : new ConfigParser(configFile, configText).Parse();
+        }
+        catch (ConfigParseException e)
+        {
+            Console.WriteLine(e.Message);
+            return 1;
+        }
 
         AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(AssemblyResolveCallback);
 
@@ -387,6 +396,17 @@ class Generator : ExtraReflection
     // returns: true if it is newly generated, false if it is already generated
     Boolean GenerateModules2(bool force)
     {
+        AssemblyConfig assemblyConfig = config.TryGetAssemblyConfig(thisAssembly);
+        if (config.whitelist)
+        {
+            if (assemblyConfig == null)
+            {
+                Console.WriteLine("[DEBUG] skipping assembly '{0}' (not in Whitelist)", thisAssembly.GetName().Name);
+                return false;
+            }
+            Console.WriteLine("[DEBUG] assembly '{0}' is in the Whitelist", thisAssembly.GetName().Name);
+        }
+
         // hash the assembly, so we can check if it is already generated
         // and then save it once we are done so it can be checked later
         String assemblyHash;
@@ -410,8 +430,6 @@ class Generator : ExtraReflection
             Console.WriteLine("deleting old temporary package dir '{0}'", tempPackageDir);
             Directory.Delete(tempPackageDir, true);
         }
-
-        AssemblyConfig assemblyConfig = config.GetAssemblyConfig(thisAssembly);
 
         // on the first pass we identify types that need to be defined inside other types
         // so that when we generate code, we can generate all the subtypes for each type
