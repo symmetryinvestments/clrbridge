@@ -2,4 +2,4 @@
 
 @rm out/ClrBridgeCodegen.exe
 @mkdir out
-${dotnetCompiler} /out:out/ClrBridgeCodegen.exe codegen/ClrBridgeCodegen.cs
+${dotnetCompiler} /out:out/ClrBridgeCodegen.exe codegen/ClrBridgeCodegen.cs codegen/Config.cs

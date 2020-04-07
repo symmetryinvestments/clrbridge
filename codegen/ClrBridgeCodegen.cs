@@ -77,6 +77,7 @@ static class ClrBridgeCodegen
         Console.WriteLine("assembly : {0}", assemblyString);
         Console.WriteLine("outputDir: {0}", outputDir);
         Console.WriteLine("shallow  : {0}", shallow);
+        Console.WriteLine("config   : {0}", (configFile == null) ? "<none>" : configFile);
 
         // check output dir and config file
         String outputMetadataDir = Path.Combine(outputDir, ".metadata");
@@ -110,7 +111,7 @@ static class ClrBridgeCodegen
             Console.WriteLine("[DEBUG] both configs match ({0} bytes)", configText.Length);
         }
 
-        Config config = (configFile == null) ? new Config() : new ConfigParser(configFile, configText).Parse();
+        Config config = (configFile == null) ? new Config("", false) : new ConfigParser(configFile, configText).Parse();
 
         AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(AssemblyResolveCallback);
 
@@ -131,7 +132,7 @@ static class ClrBridgeCodegen
                 Console.WriteLine("Error: assembly string must start with 'file:' or 'gac:' but got '{0}'", assemblyString);
                 return 1;
             }
-            TempPackage tempPackage = new Generator(sharedAssemblyMap, assembly, outputDir).GenerateModules(false);
+            TempPackage tempPackage = new Generator(config, sharedAssemblyMap, assembly, outputDir).GenerateModules(false);
             if (!tempPackage.IsNull())
                 newlyGeneratedAssemblies.Add(tempPackage);
         }
@@ -144,7 +145,7 @@ static class ClrBridgeCodegen
                 {
                     if (pair.Value.state == AssemblyState.Initial)
                     {
-                        TempPackage tempPackage = new Generator(sharedAssemblyMap, pair.Key, outputDir).GenerateModules(false);
+                        TempPackage tempPackage = new Generator(config, sharedAssemblyMap, pair.Key, outputDir).GenerateModules(false);
                         if (!tempPackage.IsNull())
                             newlyGeneratedAssemblies.Add(tempPackage);
                         Debug.Assert(pair.Value.state == AssemblyState.Generated);
@@ -193,128 +194,6 @@ static class ClrBridgeCodegen
         Console.WriteLine("[DEBUG]     => NOT FOUND!");
         return null;
     }
-}
-
-class ConfigParser
-{
-    static readonly Char[] NewlineArray = new Char[] {'\n'};
-
-    public readonly String filename;
-    public readonly String text;
-    Int32 lineNumber;
-    AssemblyConfig currentAssembly;
-    TypeConfig currentType;
-    public ConfigParser(String filename, String text)
-    {
-        this.filename = filename;
-        this.text = text;
-    }
-    Exception ParseException(String msg)
-    {
-        throw new Exception(String.Format("{0}(line {1}): {2}", filename, lineNumber, msg));
-    }
-    public Config Parse()
-    {
-        Config config = new Config();
-        String[] lines = text.Split(NewlineArray);
-        if (lines != null)
-        {
-            for (int i = 0; i < lines.Length; i++)
-            {
-                this.lineNumber = i + 1;
-                ParseLine(config, lines[i]);
-            }
-        }
-        return config;
-    }
-    public void ParseLine(Config config, String line)
-    {
-        String remaining = line;
-        String directive = Peel(ref remaining);
-        if (directive.Length == 0) return;
-        if (directive == "Assembly")
-        {
-            String name = Peel(ref remaining);
-            if (name.Length == 0)
-                throw ParseException("the 'Assembly' directive requires a name");
-            EnforceDirectiveDone(directive, remaining);
-
-            this.currentType = null;
-            this.currentAssembly = new AssemblyConfig(name);
-            config.assemblyMap.Add(name, this.currentAssembly);
-        }
-        else if (directive == "Type")
-        {
-            String name = Peel(ref remaining);
-            if (name.Length == 0)
-                throw ParseException("the 'Type' directive requires a name");
-            EnforceDirectiveDone(directive, remaining);
-            if (currentAssembly == null)
-                throw ParseException("the 'Type' directive cannot appear before an 'Assembly' directive");
-            this.currentType = new TypeConfig(name);
-            this.currentAssembly.typeMap.Add(name, this.currentType);
-        }
-        else throw ParseException(String.Format("Unknown directive '{0}'", directive));
-    }
-    void EnforceDirectiveDone(String directive, String remaining)
-    {
-        String afterPeel = remaining;
-        String more = Peel(ref afterPeel);
-        if (more.Length != 0)
-            throw ParseException(String.Format("too many arguments for the '{0}' directive, extra is: {1}", directive, remaining));
-    }
-    String Peel(ref String line)
-    {
-        Int32 start = line.Skip(0, ' ');
-        Int32 end = line.Until(start, ' ');
-        if (start == end)
-        {
-            line = "";
-            return "";
-        }
-        String result = line.Substring(start, end - start);
-        line = line.Substring(end);
-        return result;
-    }
-}
-static class ParseExtensions
-{
-    public static Int32 Skip(this String s, Int32 offset, Char c)
-    {
-        for (;; offset++) {
-            if (offset >= s.Length || s[offset] != c)
-                return offset;
-        }
-    }
-    public static Int32 Until(this String s, Int32 offset, Char c)
-    {
-        for (;; offset++) {
-            if (offset >= s.Length || s[offset] == c)
-                return offset;
-        }
-    }
-}
-
-class TypeConfig
-{
-    public readonly String name;
-    public TypeConfig(String name)
-    {
-        this.name = name;
-    }
-}
-class AssemblyConfig
-{
-    public readonly String name;
-    public readonly Dictionary<String,TypeConfig> typeMap = new Dictionary<String,TypeConfig>();
-    public AssemblyConfig(String name)
-    {
-        this.name = name;
-    }
-}
-class Config
-{
-    public readonly Dictionary<String,AssemblyConfig> assemblyMap = new Dictionary<String,AssemblyConfig>();
 }
 
 struct TempPackage
@@ -462,6 +341,7 @@ class ExtraReflection
 
 class Generator : ExtraReflection
 {
+    readonly Config config;
     readonly String outputDir;
     readonly Dictionary<String,DModule> moduleMap;
     readonly Dictionary<String,DModule> moduleUpperCaseMap;
@@ -469,9 +349,10 @@ class Generator : ExtraReflection
     readonly String finalPackageDir;
     readonly String tempPackageDir;
 
-    public Generator(Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, String outputDir)
+    public Generator(Config config, Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, String outputDir)
         : base(sharedAssemblyMap, thisAssembly)
     {
+        this.config = config;
         this.outputDir = outputDir;
         this.moduleMap = new Dictionary<String,DModule>();
         this.moduleUpperCaseMap = new Dictionary<String,DModule>();
@@ -530,11 +411,52 @@ class Generator : ExtraReflection
             Directory.Delete(tempPackageDir, true);
         }
 
+        AssemblyConfig assemblyConfig = config.GetAssemblyConfig(thisAssembly);
+
         // on the first pass we identify types that need to be defined inside other types
         // so that when we generate code, we can generate all the subtypes for each type
         Type[] allTypes = thisAssembly.GetTypes();
+        IList<Type> typesToGenerate;
+        if (assemblyConfig == null)
+            typesToGenerate = allTypes;
+        else
+        {
+            HashSet<TypeConfig> typeConfigsFound = new HashSet<TypeConfig>();
+            List<Type> matched = new List<Type>();
+            List<Type> unmatched = new List<Type>();
+            foreach (Type type in allTypes)
+            {
+                TypeConfig typeConfig;
+                if (assemblyConfig.typeMap.TryGetValue(type.FullName, out typeConfig))
+                {
+                    matched.Add(type);
+                    typeConfigsFound.Add(typeConfig);
+                }
+                else
+                {
+                    unmatched.Add(type);
+                }
+            }
+            if (typeConfigsFound.Count != assemblyConfig.typeMap.Count)
+            {
+                foreach (TypeConfig typeConfig in assemblyConfig.typeMap.Values)
+                {
+                    if (!typeConfigsFound.Contains(typeConfig))
+                    {
+                        Console.WriteLine("{0}({1}) Error: type '{2}' does not exist in assembly '{3}'",
+                            config.filename, typeConfig.lineNumber, typeConfig.name, assemblyConfig.name);
+                    }
+                }
+                throw new AlreadyReportedException();
+            }
+            if (assemblyConfig.listKind == ListKind.Whitelist)
+                typesToGenerate = matched;
+            else
+                typesToGenerate = unmatched;
+        }
+
         List<Type> rootTypes = new List<Type>();
-        foreach (Type type in allTypes)
+        foreach (Type type in typesToGenerate)
         {
             if (type.DeclaringType != null)
                 GetExtraTypeInfo(type.DeclaringType).subTypes.Add(type);
@@ -545,7 +467,6 @@ class Generator : ExtraReflection
         foreach (Type type in rootTypes)
         {
             //writer.WriteLine("type {0}", type);
-
             DModule module;
             if (!moduleMap.TryGetValue(type.Namespace.NullToEmpty(), out module))
             {
@@ -591,7 +512,9 @@ class Generator : ExtraReflection
             module.Dispose();
         }
 
-        using (StreamWriter writer = new StreamWriter(new FileStream(Path.Combine(tempPackageDir, "all.d"), FileMode.Create, FileAccess.Write, FileShare.Read)))
+        String allSourceFile = Path.Combine(tempPackageDir, "all.d");
+        Directory.CreateDirectory(Path.GetDirectoryName(allSourceFile));
+        using (StreamWriter writer = new StreamWriter(new FileStream(allSourceFile, FileMode.Create, FileAccess.Write, FileShare.Read)))
         {
             writer.WriteLine("module {0}.all;", thisAssemblyPackageName);
             foreach (DModule module in moduleMap.Values)
