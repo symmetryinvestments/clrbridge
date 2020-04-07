@@ -19,7 +19,7 @@ static class ClrBridgeCodegen
 {
     static void Usage()
     {
-        Console.WriteLine("Usage: ClrBridgeCodegen.exe [--options...] <DotNetAssembly> <OutputDir>");
+        Console.WriteLine("Usage: ClrBridgeCodegen.exe [--options...] <OutputDir> <DotNetAssemblies>...");
         Console.WriteLine("Options:");
         Console.WriteLine("  --shallow      Only generate for the given assembly, ignore assembly references");
         // TODO: add an option that says to use whatever config is already in outputDir
@@ -67,15 +67,19 @@ static class ClrBridgeCodegen
                 return 1;
             }
         }
-        if (nonOptionArgs.Count != 2)
+        if (nonOptionArgs.Count < 2)
         {
             Usage();
             return 1;
         }
-        String assemblyString = nonOptionArgs[0];
-        String outputDir = nonOptionArgs[1];
-        Console.WriteLine("assembly : {0}", assemblyString);
+        String outputDir = nonOptionArgs[0];
+        List<String> assemblyStrings = nonOptionArgs.GetRange(1, nonOptionArgs.Count - 1);
+
         Console.WriteLine("outputDir: {0}", outputDir);
+        foreach (String assemblyString in assemblyStrings)
+        {
+            Console.WriteLine("assembly : {0}", assemblyString);
+        }
         Console.WriteLine("shallow  : {0}", shallow);
         Console.WriteLine("config   : {0}", (configFile == null) ? "<none>" : configFile);
 
@@ -126,6 +130,7 @@ static class ClrBridgeCodegen
 
         Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap = new Dictionary<Assembly, ExtraAssemblyInfo>();
         List<TempPackage> newlyGeneratedAssemblies = new List<TempPackage>();
+        foreach (String assemblyString in assemblyStrings)
         {
             Assembly assembly;
             if (assemblyString.StartsWith("file:"))

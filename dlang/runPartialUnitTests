@@ -14,7 +14,7 @@
 
 @scope @foreach test ${unitTests}
     ${dotnetCompiler} /out:../out/test/unit/partial/${test}/${test}.dll /t:library ../test/unit/${test}/${test}.cs
-    ${dotnetLoader} ../out/ClrBridgeCodegen.exe --config ../test/unit/${test}/clrbridge.config file:../out/test/unit/partial/${test}/${test}.dll ../out/test/unit/partial/${test}/src
+    ${dotnetLoader} ../out/ClrBridgeCodegen.exe --config ../test/unit/${test}/clrbridge.config ../out/test/unit/partial/${test}/src file:../out/test/unit/partial/${test}/${test}.dll
 @end
 
 @scope @foreach test ${unitTests}

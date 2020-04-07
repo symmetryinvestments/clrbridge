@@ -15,7 +15,7 @@
 @scope @foreach test ${unitTests}
     ${dotnetCompiler} /out:../out/test/unit/${test}/${test}.dll /t:library ../test/unit/${test}/${test}.cs
     # use --shallow so as not to regnerate mscorlib
-    ${dotnetLoader} ../out/ClrBridgeCodegen.exe --shallow file:../out/test/unit/${test}/${test}.dll ../out/test/unit/${test}/src
+    ${dotnetLoader} ../out/ClrBridgeCodegen.exe --shallow ../out/test/unit/${test}/src file:../out/test/unit/${test}/${test}.dll
 @end
 
 @scope @foreach test ${unitTests}
