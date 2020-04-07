@@ -13,6 +13,7 @@ class ConfigParseException : Exception
 class ConfigParser
 {
     static readonly Char[] NewlineArray = new Char[] {'\n'};
+    static readonly Char[] CarriageReturnArray = new Char[] {'\r'};
 
     readonly String filename;
     readonly String text;
@@ -38,7 +39,7 @@ class ConfigParser
             for (int i = 0; i < lines.Length; i++)
             {
                 this.lineNumber = (UInt32)(i + 1);
-                ParseLine(lines[i]);
+                ParseLine(lines[i].Trim(CarriageReturnArray));
             }
         }
         if (config == null)
@@ -61,7 +62,8 @@ class ConfigParser
             else if (optionalArg.Equals("Whitelist", StringComparison.Ordinal))
                 whitelist = true;
             else
-                throw ParseException(String.Format("invalid argument '{0}' for 'Assemblies' directive, expecte 'Whitelist' or nothing", optionalArg));
+                throw ParseException(String.Format(
+                    "invalid argument '{0}' for 'Assemblies' directive, expecte 'Whitelist' or nothing", optionalArg));
             EnforceDirectiveDone(directive, remaining);
             config = new Config(filename, whitelist);
         }
