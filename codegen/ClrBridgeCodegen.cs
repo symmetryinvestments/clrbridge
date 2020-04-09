@@ -328,7 +328,7 @@ class ExtraReflection
                !type.IsGenericType // skip generic types for now
             && !type.IsArray // skip arrays for now
             && !(typeof(Delegate).IsAssignableFrom(type)) // skip delegates for now
-            && type.IsClass // skip value types for now
+            && !type.IsValueType // skip value types for now
         )
         {
             useRealType = true;
@@ -666,27 +666,7 @@ class Generator : ExtraReflection
         }
         context.ExitBlock();
     }
-    void GenerateInterface(DContext context, Type type)
-    {
-        TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
-        context.Write("/* .NET interface{0} */ struct {1}",
-            (typeConfigOrDisabled == null) ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
-        Type[] genericArgs = type.GetGenericArguments();
-        GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
-        context.WriteLine();
-        context.EnterBlock();
-        using (DTypeContext typeContext = new DTypeContext(context))
-        {
-            Debug.Assert(type.GetFields().Length == 0);
-            //??? GenerateMetadata(typeContext, type);
-            if (typeConfigOrDisabled != null)
-            {
-                GenerateMethods(typeContext, type, typeConfigOrDisabled);
-            }
-            GenerateSubTypes(typeContext, type);
-        }
-        context.ExitBlock();
-    }
+
     void GenerateDelegate(DContext context, Type type)
     {
         TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
@@ -702,6 +682,31 @@ class Generator : ExtraReflection
         }
         context.ExitBlock();
     }
+
+    void GenerateInterface(DContext context, Type type)
+    {
+        TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
+        context.Write("/* .NET interface{0} */ struct {1}",
+            (typeConfigOrDisabled == null) ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
+        Type[] genericArgs = type.GetGenericArguments();
+        GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
+        context.WriteLine();
+        context.EnterBlock();
+        using (DTypeContext typeContext = new DTypeContext(context))
+        {
+            Debug.Assert(type.GetFields().Length == 0);
+            String baseTypeForD = typeContext.TypeReferenceForD(this, (type.BaseType == null) ? typeof(System.Object) : type.BaseType);
+            typeContext.WriteLine("mixin __d.clrbridge.DotNetObjectMixin!({0});", baseTypeForD);
+            GenerateMetadata(typeContext, type, genericArgs);
+            if (typeConfigOrDisabled != null)
+            {
+                GenerateMethods(typeContext, type, typeConfigOrDisabled);
+            }
+            GenerateSubTypes(typeContext, type);
+        }
+        context.ExitBlock();
+    }
+
     void GenerateClass(DContext context, Type type)
     {
         TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
