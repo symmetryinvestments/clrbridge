@@ -13,8 +13,7 @@ void test()
     {
         const iface = Factory.CreateIInt32();
         scope (exit) globalClrBridge.release(iface);
-        // TODO: implement methods
-        //iface.SetValue(1234);
-        //assert(iface.GetValue() == 1234);
+        iface.SetValue(1234);
+        assert(iface.GetValue() == 1234);
     }
 }

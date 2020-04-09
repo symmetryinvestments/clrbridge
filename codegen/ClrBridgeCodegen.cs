@@ -860,13 +860,6 @@ class Generator : ExtraReflection
                 continue;
             }
 
-            //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            // skip virtual methods for now so we don't get linker errors
-            if (method.IsVirtual)
-            {
-                context.WriteLine("// skipping virtual method '{0}'", method.Name);
-                continue;
-            }
             // skip methods that are not declared by this type to avoid symbol issues for now
             if (method.DeclaringType != type)
             {
@@ -895,11 +888,6 @@ class Generator : ExtraReflection
             ParameterInfo[] parameters = method.GetParameters();
             GenerateGenericParameters(context, genericArguments, type.GetGenericArgCount());
             GenerateParameterList(context, parameters);
-            if (method.IsVirtual)
-            {
-                context.WriteLine(";");
-                continue;
-            }
             if (!method.IsStatic)
                 context.Write(" const"); // all methods are const because the struct is just a handle to a C# object
             context.WriteLine();
