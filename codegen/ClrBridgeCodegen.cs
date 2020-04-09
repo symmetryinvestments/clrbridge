@@ -552,36 +552,33 @@ class Generator : ExtraReflection
 
     void GenerateType(DContext context, Type type)
     {
-        if (assemblyConfig.CheckIsTypeDisabled(type))
-        {
-            GenerateDisabledType(context, type);
-        }
-        else if (type.IsValueType)
+        Boolean disabled = assemblyConfig.CheckIsTypeDisabled(type);
+        if (type.IsValueType)
         {
             if (type.IsEnum)
             {
                 Debug.Assert(!type.IsGenericType, "enum types can be generic?");
-                GenerateEnum(context, type);
+                GenerateEnum(context, type, disabled);
             }
             else
             {
-                GenerateStruct(context, type);
+                GenerateStruct(context, type, disabled);
             }
         }
         else if (type.IsInterface)
         {
-            GenerateInterface(context, type);
+            GenerateInterface(context, type, disabled);
         }
         else
         {
             Debug.Assert(type.IsClass);
             if (typeof(Delegate).IsAssignableFrom(type))
             {
-                GenerateDelegate(context, type);
+                GenerateDelegate(context, type, disabled);
             }
             else
             {
-                GenerateClass(context, type);
+                GenerateClass(context, type, disabled);
             }
         }
     }
@@ -593,68 +590,63 @@ class Generator : ExtraReflection
         module.WriteLine("/* {0} */", message);
     }
 
-    void GenerateEnum(DContext baseContext, Type type)
+    void GenerateEnum(DContext baseContext, Type type, Boolean disabled)
     {
         const String EnumValueFieldName = "__value__";
-        baseContext.WriteLine("/* .NET enum */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
+        baseContext.WriteLine("/* .NET enum{0} */ static struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         baseContext.EnterBlock();
         using (DTypeContext context = new DTypeContext(baseContext))
         {
             Type[] genericArgs = type.GetGenericArguments();
             Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
             GenerateMetadata(context, type, genericArgs);
-            String baseTypeDName = context.TypeReferenceForD(this, Enum.GetUnderlyingType(type)); // TODO: Marshal Type instead???
-            context.WriteLine("__d.clr.Enum!{0} {1};", baseTypeDName, EnumValueFieldName);
-            context.WriteLine("alias {0} this;", EnumValueFieldName);
-            context.WriteLine("enum : typeof(this)", baseTypeDName);
-            context.WriteLine("{");
-            UInt32 nonStaticFieldCount = 0;
-            foreach (FieldInfo field in type.GetFields())
+            if (!disabled)
             {
-                Debug.Assert(field.DeclaringType == type);
-                Debug.Assert(field.FieldType == type);
-                if (!field.IsStatic)
+                String baseTypeDName = context.TypeReferenceForD(this, Enum.GetUnderlyingType(type)); // TODO: Marshal Type instead???
+                context.WriteLine("__d.clr.Enum!{0} {1};", baseTypeDName, EnumValueFieldName);
+                context.WriteLine("alias {0} this;", EnumValueFieldName);
+                context.WriteLine("enum : typeof(this)", baseTypeDName);
+                context.WriteLine("{");
+                UInt32 nonStaticFieldCount = 0;
+                foreach (FieldInfo field in type.GetFields())
                 {
-                    Debug.Assert(field.Name == EnumValueFieldName);
-                    nonStaticFieldCount++;
-                    continue;
+                    Debug.Assert(field.DeclaringType == type);
+                    Debug.Assert(field.FieldType == type);
+                    if (!field.IsStatic)
+                    {
+                        Debug.Assert(field.Name == EnumValueFieldName);
+                        nonStaticFieldCount++;
+                        continue;
+                    }
+                    context.WriteLine("    {0} = typeof(this)(__d.clr.Enum!{1}({2})),", Util.ToDIdentifier(field.Name), baseTypeDName, field.GetRawConstantValue());
                 }
-                context.WriteLine("    {0} = typeof(this)(__d.clr.Enum!{1}({2})),", Util.ToDIdentifier(field.Name), baseTypeDName, field.GetRawConstantValue());
-            }
-            context.WriteLine("}");
-            Debug.Assert(nonStaticFieldCount == 1);
+                context.WriteLine("}");
+                Debug.Assert(nonStaticFieldCount == 1);
 
-            // Commenting out for now because of a conflict with TypeNameKind ToString
-            // It looks like C# might allow field names and method names to have the same symbol?
-            // I'll need to see in which cases C# allows this, maybe only with static fields?
-            // If so, the right solution would probably be to modify the field name that conflicts.
-            //GenerateMethods(context, type);
-            /*
-            foreach (var method in type.GetMethods())
-            {
-                context.WriteLine("// TODO: generate something for enum method {0}", method);
-            }
-            */
+                // Commenting out for now because of a conflict with TypeNameKind ToString
+                // It looks like C# might allow field names and method names to have the same symbol?
+                // I'll need to see in which cases C# allows this, maybe only with static fields?
+                // If so, the right solution would probably be to modify the field name that conflicts.
+                //GenerateMethods(context, type);
+                /*
+                foreach (var method in type.GetMethods())
+                {
+                    context.WriteLine("// TODO: generate something for enum method {0}", method);
+                }
+                */
 
-            // Generate opMethods so this behaves like an enum
-            context.WriteLine("typeof(this) opBinary(string op)(const typeof(this) right) const");
-            context.WriteLine("{ return typeof(this)(mixin(\"this.__value__ \" ~ op ~ \" right.__value__\")); }");
-            // TODO: there's probably more (or less) to generate to get the behavior right
+                // Generate opMethods so this behaves like an enum
+                context.WriteLine("typeof(this) opBinary(string op)(const typeof(this) right) const");
+                context.WriteLine("{ return typeof(this)(mixin(\"this.__value__ \" ~ op ~ \" right.__value__\")); }");
+                // TODO: there's probably more (or less) to generate to get the behavior right
+            }
         }
         baseContext.ExitBlock();
     }
 
-    void GenerateDisabledType(DContext context, Type type)
+    void GenerateStruct(DContext context, Type type, Boolean disabled)
     {
-        context.Write("/* DISABLED TYPE */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
-        Type[] genericArgs = type.GetGenericArguments();
-        GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
-        context.WriteLine("{ }");
-    }
-
-    void GenerateStruct(DContext context, Type type)
-    {
-        context.Write("/* .NET struct */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
+        context.Write("/* .NET struct{0} */ static struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
         context.WriteLine();
@@ -662,15 +654,18 @@ class Generator : ExtraReflection
         using (DTypeContext typeContext = new DTypeContext(context))
         {
             GenerateMetadata(typeContext, type, genericArgs);
-            GenerateFields(typeContext, type);
-            GenerateMethods(typeContext, type);
+            if (!disabled)
+            {
+                GenerateFields(typeContext, type);
+                GenerateMethods(typeContext, type);
+            }
             GenerateSubTypes(typeContext, type);
         }
         context.ExitBlock();
     }
-    void GenerateInterface(DContext context, Type type)
+    void GenerateInterface(DContext context, Type type, Boolean disabled)
     {
-        context.Write("/* .NET interface */ struct {0}", Util.GetUnqualifiedTypeNameForD(type));
+        context.Write("/* .NET interface{0} */ struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
         context.WriteLine();
@@ -679,24 +674,30 @@ class Generator : ExtraReflection
         {
             Debug.Assert(type.GetFields().Length == 0);
             //??? GenerateMetadata(typeContext, type);
-            GenerateMethods(typeContext, type);
+            if (!disabled)
+            {
+                GenerateMethods(typeContext, type);
+            }
             GenerateSubTypes(typeContext, type);
         }
         context.ExitBlock();
     }
-    void GenerateDelegate(DContext context, Type type)
+    void GenerateDelegate(DContext context, Type type, Boolean disabled)
     {
-        context.Write("/* .NET delegate */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
+        context.Write("/* .NET delegate{0} */ static struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
         context.WriteLine();
         context.EnterBlock();
-        context.WriteLine("// TODO: generate delegate members");
+        if (!disabled)
+        {
+            context.WriteLine("// TODO: generate delegate members");
+        }
         context.ExitBlock();
     }
-    void GenerateClass(DContext context, Type type)
+    void GenerateClass(DContext context, Type type, Boolean disabled)
     {
-        context.Write("/* .NET class */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
+        context.Write("/* .NET class{0} */ static struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
         context.WriteLine();
@@ -717,11 +718,14 @@ class Generator : ExtraReflection
                     baseTypeForD = typeContext.TypeReferenceForD(this, baseType);
             }
             typeContext.WriteLine("mixin __d.clrbridge.DotNetObjectMixin!({0});", baseTypeForD);
-            // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
-            // get the .NET name for this type
             GenerateMetadata(typeContext, type, genericArgs);
-            GenerateFields(typeContext, type);
-            GenerateMethods(typeContext, type);
+            if (!disabled)
+            {
+                // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
+                // get the .NET name for this type
+                GenerateFields(typeContext, type);
+                GenerateMethods(typeContext, type);
+            }
             GenerateSubTypes(typeContext, type);
         }
         context.ExitBlock();
