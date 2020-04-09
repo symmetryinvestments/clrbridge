@@ -311,6 +311,8 @@ class ExtraReflection
         if (type == typeof(Single))  { importQualifier = ""; return "float"; }
         if (type == typeof(Double))  { importQualifier = ""; return "double"; }
         if (type == typeof(Decimal)) { importQualifier = ""; return "__d.clr.Decimal"; }
+        // TODO: figure out how to properly handle IntPtr
+        //if (type == typeof(System.IntPtr)) { importQualifier = ""; return "void*"; }
         // TODO: using this causes D compiler to take too much memory while compiling mscorlib
         //       so for now I'm disabling it by using __d.clr.DotNetObject instead
         //if (type == typeof(Object))  { importQualifier = "mscorlib.System"; return "mscorlib.System.MscorlibObject"; }
