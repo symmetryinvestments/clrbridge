@@ -146,7 +146,8 @@ static class ClrBridgeCodegen
                 Console.WriteLine("Error: assembly string must start with 'file:' or 'gac:' but got '{0}'", assemblyString);
                 return 1;
             }
-            TempPackage tempPackage = new Generator(config, sharedAssemblyMap, assembly, outputDir).GenerateModules(false);
+            TempPackage tempPackage = new Generator(config, sharedAssemblyMap, assembly, outputDir,
+                config.GetAssemblyConfig(assembly)).GenerateModules(false);
             if (!tempPackage.IsNull())
                 newlyGeneratedAssemblies.Add(tempPackage);
         }
@@ -159,7 +160,8 @@ static class ClrBridgeCodegen
                 {
                     if (pair.Value.state == AssemblyState.Initial)
                     {
-                        TempPackage tempPackage = new Generator(config, sharedAssemblyMap, pair.Key, outputDir).GenerateModules(false);
+                        TempPackage tempPackage = new Generator(config, sharedAssemblyMap, pair.Key, outputDir,
+                            config.GetAssemblyConfig(pair.Key)).GenerateModules(false);
                         if (!tempPackage.IsNull())
                             newlyGeneratedAssemblies.Add(tempPackage);
                         Debug.Assert(pair.Value.state == AssemblyState.Generated);
@@ -362,8 +364,9 @@ class Generator : ExtraReflection
     readonly String thisAssemblyPackageName; // cached version of GetExtraAssemblyInfo(thisAssembly).packageName
     readonly String finalPackageDir;
     readonly String tempPackageDir;
+    readonly AssemblyConfig assemblyConfig;
 
-    public Generator(Config config, Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, String outputDir)
+    public Generator(Config config, Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, String outputDir, AssemblyConfig assemblyConfig)
         : base(sharedAssemblyMap, thisAssembly)
     {
         this.config = config;
@@ -373,6 +376,7 @@ class Generator : ExtraReflection
         this.thisAssemblyPackageName = GetExtraAssemblyInfo(thisAssembly).packageName;
         this.finalPackageDir = Path.Combine(outputDir, this.thisAssemblyPackageName);
         this.tempPackageDir = this.finalPackageDir + ".generating";
+        this.assemblyConfig = assemblyConfig;
     }
 
     String TryReadLastGeneratedHash()
@@ -401,16 +405,9 @@ class Generator : ExtraReflection
     // returns: true if it is newly generated, false if it is already generated
     Boolean GenerateModules2(bool force)
     {
-        AssemblyConfig assemblyConfig = config.TryGetAssemblyConfig(thisAssembly);
-        if (config.whitelist)
-        {
-            if (assemblyConfig == null)
-            {
-                Console.WriteLine("[DEBUG] skipping assembly '{0}' (not in Whitelist)", thisAssembly.GetName().Name);
-                return false;
-            }
-            Console.WriteLine("[DEBUG] assembly '{0}' is in the Whitelist", thisAssembly.GetName().Name);
-        }
+        // Rather than completely skipping the assembly when it is disabled, I'm stil going to generate it,
+        // but all the types will be empty.  This means they can still be referenced like normal so other assemblies
+        // won't need to know that they are disabled.
 
         // hash the assembly, so we can check if it is already generated
         // and then save it once we are done so it can be checked later
@@ -436,28 +433,18 @@ class Generator : ExtraReflection
             Directory.Delete(tempPackageDir, true);
         }
 
-        // on the first pass we identify types that need to be defined inside other types
-        // so that when we generate code, we can generate all the subtypes for each type
         Type[] allTypes = thisAssembly.GetTypes();
-        IList<Type> typesToGenerate;
-        if (assemblyConfig == null)
-            typesToGenerate = allTypes;
-        else
+
+        // Check that there are no undefined types configured
+        if (assemblyConfig != null)
         {
             HashSet<TypeConfig> typeConfigsFound = new HashSet<TypeConfig>();
-            List<Type> matched = new List<Type>();
-            List<Type> unmatched = new List<Type>();
             foreach (Type type in allTypes)
             {
                 TypeConfig typeConfig;
                 if (assemblyConfig.typeMap.TryGetValue(type.FullName, out typeConfig))
                 {
-                    matched.Add(type);
                     typeConfigsFound.Add(typeConfig);
-                }
-                else
-                {
-                    unmatched.Add(type);
                 }
             }
             if (typeConfigsFound.Count != assemblyConfig.typeMap.Count)
@@ -472,14 +459,10 @@ class Generator : ExtraReflection
                 }
                 throw new AlreadyReportedException();
             }
-            if (assemblyConfig.listKind == ListKind.Whitelist)
-                typesToGenerate = matched;
-            else
-                typesToGenerate = unmatched;
         }
 
         List<Type> rootTypes = new List<Type>();
-        foreach (Type type in typesToGenerate)
+        foreach (Type type in allTypes)
         {
             if (type.DeclaringType != null)
                 GetExtraTypeInfo(type.DeclaringType).subTypes.Add(type);
@@ -569,7 +552,11 @@ class Generator : ExtraReflection
 
     void GenerateType(DContext context, Type type)
     {
-        if (type.IsValueType)
+        if (assemblyConfig.CheckIsTypeDisabled(type))
+        {
+            GenerateDisabledType(context, type);
+        }
+        else if (type.IsValueType)
         {
             if (type.IsEnum)
             {
@@ -655,6 +642,14 @@ class Generator : ExtraReflection
             // TODO: there's probably more (or less) to generate to get the behavior right
         }
         baseContext.ExitBlock();
+    }
+
+    void GenerateDisabledType(DContext context, Type type)
+    {
+        context.Write("/* DISABLED TYPE */ static struct {0}", Util.GetUnqualifiedTypeNameForD(type));
+        Type[] genericArgs = type.GetGenericArguments();
+        GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
+        context.WriteLine("{ }");
     }
 
     void GenerateStruct(DContext context, Type type)

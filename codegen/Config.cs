@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 
-enum ListKind { Whitelist, Blacklist }
-
 class ConfigParseException : Exception
 {
     public ConfigParseException(String msg) : base(msg)
@@ -63,26 +61,33 @@ class ConfigParser
                 whitelist = true;
             else
                 throw ParseException(String.Format(
-                    "invalid argument '{0}' for 'Assemblies' directive, expecte 'Whitelist' or nothing", optionalArg));
+                    "invalid argument '{0}' for 'Assemblies' directive, expected 'Whitelist' or nothing", optionalArg));
             EnforceDirectiveDone(directive, remaining);
             config = new Config(filename, whitelist);
         }
+        // TODO: implement ExcludeAssembly (only allow if Assemblies is not in Whitelist mode)
         else if (directive == "Assembly")
         {
             EnforceHaveAssembliesConfig(directive);
             String name = Peel(ref remaining);
             if (name.Length == 0)
                 throw ParseException("the 'Assembly' directive requires a name");
-            String listKindString = Peel(ref remaining);
-            if (listKindString.Length == 0)
-                throw ParseException("the 'Assembly' directive is missing 'Whitelist' or 'Blacklist'");
+            Boolean whitelist;
+            String optionalArg = Peel(ref remaining);
+            if (optionalArg.Length == 0)
+                whitelist = false;
+            else if (optionalArg.Equals("Whitelist", StringComparison.Ordinal))
+                whitelist = true;
+            else
+                throw ParseException(String.Format(
+                    "invalid argument '{0}' for 'Assembly' directive, expected 'Whitelist' or nothing", optionalArg));
             EnforceDirectiveDone(directive, remaining);
-            ListKind listKind = ParseListKind(listKindString);
 
             this.currentType = null;
-            this.currentAssembly = new AssemblyConfig(name, listKind);
+            this.currentAssembly = new AssemblyConfig(name, whitelist);
             config.assemblyMap.Add(name, this.currentAssembly);
         }
+        // TODO: implement ExcludeType (only allow if the assembly is not in Whitelist mode)
         else if (directive == "Type")
         {
             EnforceHaveAssembly(directive);
@@ -94,12 +99,6 @@ class ConfigParser
             this.currentAssembly.typeMap.Add(name, this.currentType);
         }
         else throw ParseException(String.Format("Unknown directive '{0}'", directive));
-    }
-    ListKind ParseListKind(String str)
-    {
-        if (str.Equals("Whitelist", StringComparison.Ordinal)) return ListKind.Whitelist;
-        if (str.Equals("Blacklist", StringComparison.Ordinal)) return ListKind.Blacklist;
-        throw ParseException(String.Format("expected 'Whitelist' or 'Blacklist' but got '{0}'", str));
     }
     void EnforceHaveAssembliesConfig(String directive)
     {
@@ -173,31 +172,19 @@ class TypeConfig
 class AssemblyConfig
 {
     public readonly String name;
-    public readonly ListKind listKind;
+    public readonly Boolean whitelist;
     public readonly Dictionary<String,TypeConfig> typeMap = new Dictionary<String,TypeConfig>();
-    public AssemblyConfig(String name, ListKind listKind)
+    public AssemblyConfig(String name, Boolean whitelist)
     {
         this.name = name;
-        this.listKind = listKind;
+        this.whitelist = whitelist;
     }
-    public IEnumerable<Type> EnumerateEnabledTypes(List<Type> types)
+    public Boolean CheckIsTypeDisabled(Type type)
     {
-        if (typeMap.Count == 0)
-            return types;
-        List<Type> filtered = new List<Type>();
-        foreach (Type type in types)
-        {
-            if (TypeEnabled(type))
-                filtered.Add(type);
-        }
-        return filtered;
-    }
-    public Boolean TypeEnabled(Type type)
-    {
-        TypeConfig typeConfig;
-        if (typeMap.TryGetValue(type.FullName, out typeConfig))
-            return false;
-        return true;
+        if (whitelist)
+            return !typeMap.ContainsKey(type.FullName);
+        // TODO: handle ExcludeTypes
+        return false;
     }
 }
 class Config
@@ -210,11 +197,15 @@ class Config
         this.filename = filename;
         this.whitelist = whitelist;
     }
-    public AssemblyConfig TryGetAssemblyConfig(Assembly assembly)
+    public AssemblyConfig GetAssemblyConfig(Assembly assembly)
     {
+        String assemblyName = assembly.GetName().Name;
         AssemblyConfig assemblyConfig;
-        if (assemblyMap.TryGetValue(assembly.GetName().Name, out assemblyConfig))
-            return assemblyConfig;
-        return null;
+        if (!assemblyMap.TryGetValue(assemblyName, out assemblyConfig))
+        {
+            assemblyConfig = new AssemblyConfig(assemblyName, whitelist);
+            assemblyMap.Add(assemblyName, assemblyConfig);
+        }
+        return assemblyConfig;
     }
 }
