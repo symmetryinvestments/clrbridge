@@ -5,7 +5,7 @@
 
 @default dCompiler ldmd2
 
-@default unitTests "primitives booleans fields enums classes generics"
+@default unitTests "primitives booleans fields enums classes generics filtermethod"
 
 @scope @foreach test ${unitTests}
     @rm ../out/test/unit/partial/${test}

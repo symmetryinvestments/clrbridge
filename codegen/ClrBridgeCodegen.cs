@@ -552,33 +552,32 @@ class Generator : ExtraReflection
 
     void GenerateType(DContext context, Type type)
     {
-        Boolean disabled = assemblyConfig.CheckIsTypeDisabled(type);
         if (type.IsValueType)
         {
             if (type.IsEnum)
             {
                 Debug.Assert(!type.IsGenericType, "enum types can be generic?");
-                GenerateEnum(context, type, disabled);
+                GenerateEnum(context, type);
             }
             else
             {
-                GenerateStruct(context, type, disabled);
+                GenerateStruct(context, type);
             }
         }
         else if (type.IsInterface)
         {
-            GenerateInterface(context, type, disabled);
+            GenerateInterface(context, type);
         }
         else
         {
             Debug.Assert(type.IsClass);
             if (typeof(Delegate).IsAssignableFrom(type))
             {
-                GenerateDelegate(context, type, disabled);
+                GenerateDelegate(context, type);
             }
             else
             {
-                GenerateClass(context, type, disabled);
+                GenerateClass(context, type);
             }
         }
     }
@@ -590,17 +589,19 @@ class Generator : ExtraReflection
         module.WriteLine("/* {0} */", message);
     }
 
-    void GenerateEnum(DContext baseContext, Type type, Boolean disabled)
+    void GenerateEnum(DContext baseContext, Type type)
     {
         const String EnumValueFieldName = "__value__";
-        baseContext.WriteLine("/* .NET enum{0} */ static struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
+        TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
+        baseContext.WriteLine("/* .NET enum{0} */ static struct {1}",
+            (typeConfigOrDisabled == null) ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         baseContext.EnterBlock();
         using (DTypeContext context = new DTypeContext(baseContext))
         {
             Type[] genericArgs = type.GetGenericArguments();
             Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
             GenerateMetadata(context, type, genericArgs);
-            if (!disabled)
+            if (typeConfigOrDisabled != null)
             {
                 String baseTypeDName = context.TypeReferenceForD(this, Enum.GetUnderlyingType(type)); // TODO: Marshal Type instead???
                 context.WriteLine("__d.clr.Enum!{0} {1};", baseTypeDName, EnumValueFieldName);
@@ -644,9 +645,11 @@ class Generator : ExtraReflection
         baseContext.ExitBlock();
     }
 
-    void GenerateStruct(DContext context, Type type, Boolean disabled)
+    void GenerateStruct(DContext context, Type type)
     {
-        context.Write("/* .NET struct{0} */ static struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
+        TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
+        context.Write("/* .NET struct{0} */ static struct {1}",
+            (typeConfigOrDisabled == null) ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
         context.WriteLine();
@@ -654,18 +657,20 @@ class Generator : ExtraReflection
         using (DTypeContext typeContext = new DTypeContext(context))
         {
             GenerateMetadata(typeContext, type, genericArgs);
-            if (!disabled)
+            if (typeConfigOrDisabled != null)
             {
                 GenerateFields(typeContext, type);
-                GenerateMethods(typeContext, type);
+                GenerateMethods(typeContext, type, typeConfigOrDisabled);
             }
             GenerateSubTypes(typeContext, type);
         }
         context.ExitBlock();
     }
-    void GenerateInterface(DContext context, Type type, Boolean disabled)
+    void GenerateInterface(DContext context, Type type)
     {
-        context.Write("/* .NET interface{0} */ struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
+        TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
+        context.Write("/* .NET interface{0} */ struct {1}",
+            (typeConfigOrDisabled == null) ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
         context.WriteLine();
@@ -674,30 +679,34 @@ class Generator : ExtraReflection
         {
             Debug.Assert(type.GetFields().Length == 0);
             //??? GenerateMetadata(typeContext, type);
-            if (!disabled)
+            if (typeConfigOrDisabled != null)
             {
-                GenerateMethods(typeContext, type);
+                GenerateMethods(typeContext, type, typeConfigOrDisabled);
             }
             GenerateSubTypes(typeContext, type);
         }
         context.ExitBlock();
     }
-    void GenerateDelegate(DContext context, Type type, Boolean disabled)
+    void GenerateDelegate(DContext context, Type type)
     {
-        context.Write("/* .NET delegate{0} */ static struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
+        TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
+        context.Write("/* .NET delegate{0} */ static struct {1}",
+            (typeConfigOrDisabled == null) ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
         context.WriteLine();
         context.EnterBlock();
-        if (!disabled)
+        if (typeConfigOrDisabled != null)
         {
             context.WriteLine("// TODO: generate delegate members");
         }
         context.ExitBlock();
     }
-    void GenerateClass(DContext context, Type type, Boolean disabled)
+    void GenerateClass(DContext context, Type type)
     {
-        context.Write("/* .NET class{0} */ static struct {1}", disabled ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
+        TypeConfig typeConfigOrDisabled = assemblyConfig.TryGetTypeConfig(type);
+        context.Write("/* .NET class{0} */ static struct {1}",
+            (typeConfigOrDisabled == null) ? " (disabled)" : "", Util.GetUnqualifiedTypeNameForD(type));
         Type[] genericArgs = type.GetGenericArguments();
         GenerateGenericParameters(context, genericArgs, type.DeclaringType.GetGenericArgCount());
         context.WriteLine();
@@ -719,12 +728,12 @@ class Generator : ExtraReflection
             }
             typeContext.WriteLine("mixin __d.clrbridge.DotNetObjectMixin!({0});", baseTypeForD);
             GenerateMetadata(typeContext, type, genericArgs);
-            if (!disabled)
+            if (typeConfigOrDisabled != null)
             {
                 // generate metadata, one reason for this is so that when this type is used as a template parameter, we can
                 // get the .NET name for this type
                 GenerateFields(typeContext, type);
-                GenerateMethods(typeContext, type);
+                GenerateMethods(typeContext, type, typeConfigOrDisabled);
             }
             GenerateSubTypes(typeContext, type);
         }
@@ -819,8 +828,9 @@ class Generator : ExtraReflection
         }
     }
 
-    void GenerateMethods(DTypeContext context, Type type)
+    void GenerateMethods(DTypeContext context, Type type, TypeConfig typeConfig)
     {
+        Debug.Assert(typeConfig != null);
         foreach (ConstructorInfo constructor in type.GetConstructors())
         {
             if (type.IsValueType)
@@ -839,6 +849,12 @@ class Generator : ExtraReflection
         }
         foreach (MethodInfo method in type.GetMethods())
         {
+            if (typeConfig.CheckIsMethodDisabled(method))
+            {
+                context.WriteLine("// ExcludeMethod {0}", method.Name);
+                continue;
+            }
+
             //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             // skip virtual methods for now so we don't get linker errors
             if (method.IsVirtual)

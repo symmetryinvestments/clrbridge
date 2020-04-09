@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 
 class ConfigParseException : Exception
@@ -98,6 +99,16 @@ class ConfigParser
             this.currentType = new TypeConfig(lineNumber, name);
             this.currentAssembly.typeMap.Add(name, this.currentType);
         }
+        else if (directive == "ExcludeMethod")
+        {
+            EnforceHaveType(directive);
+            String name = Peel(ref remaining);
+            if (name.Length == 0)
+                throw ParseException(String.Format("the '{0}' directive requires a name", directive));
+            EnforceDirectiveDone(directive, remaining);
+            if (!this.currentType.AddExcludeMethod(name))
+                throw ParseException(String.Format("method '{0}' has already been excluded", name));
+        }
         else throw ParseException(String.Format("Unknown directive '{0}'", directive));
     }
     void EnforceHaveAssembliesConfig(String directive)
@@ -107,9 +118,16 @@ class ConfigParser
     }
     void EnforceHaveAssembly(String directive)
     {
-        EnforceHaveAssembliesConfig(directive);
         if (currentAssembly == null)
             throw ParseException(String.Format("directive '{0}' must appear after an 'Assembly' directive", directive));
+        Debug.Assert(config != null); // code bug if fails
+    }
+    void EnforceHaveType(String directive)
+    {
+        if (currentType == null)
+            throw ParseException(String.Format("directive '{0}' must appear after a 'Type' directive", directive));
+        Debug.Assert(currentAssembly != null); // code bug if fails
+        Debug.Assert(config != null); // code bug if fails
     }
     void EnforceDirectiveDone(String directive, String remaining)
     {
@@ -154,10 +172,21 @@ class TypeConfig
 {
     public readonly UInt32 lineNumber;
     public readonly String name;
+    HashSet<String> excludeMethods;
     public TypeConfig(UInt32 lineNumber, String name)
     {
         this.lineNumber = lineNumber;
         this.name = name;
+    }
+    // returns: true if newly added, false if already added
+    public Boolean AddExcludeMethod(String name)
+    {
+        if (excludeMethods == null) excludeMethods = new HashSet<String>();
+        return excludeMethods.Add(name);
+    }
+    public Boolean CheckIsMethodDisabled(MethodInfo methodInfo)
+    {
+        return excludeMethods != null && excludeMethods.Contains(methodInfo.Name);
     }
     public Boolean AppearsIn(IEnumerable<Type> types)
     {
@@ -179,12 +208,26 @@ class AssemblyConfig
         this.name = name;
         this.whitelist = whitelist;
     }
+    /*
     public Boolean CheckIsTypeDisabled(Type type)
     {
         if (whitelist)
             return !typeMap.ContainsKey(type.FullName);
         // TODO: handle ExcludeTypes
         return false;
+    }
+    */
+    // returns: null if type is disabled
+    public TypeConfig TryGetTypeConfig(Type type)
+    {
+        TypeConfig typeConfig;
+        if (!typeMap.TryGetValue(type.FullName, out typeConfig))
+        {
+            if (whitelist) return null;
+            typeConfig = new TypeConfig(0, type.FullName);
+            typeMap.Add(type.FullName, typeConfig);
+        }
+        return typeConfig;
     }
 }
 class Config
