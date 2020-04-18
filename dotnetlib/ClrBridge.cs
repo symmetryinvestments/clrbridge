@@ -34,6 +34,15 @@ public static partial class ClrBridge
         return ResultCode.Success;
     }
 
+    // Returns the actual GC pointer to an object, note that this shouldn't normaly be derefernced from native
+    // code, but the function is provided to aid in debugging.
+    public static unsafe IntPtr ObjectHandleToGCPointer(IntPtr objPtr)
+    {
+        Object obj = GCHandle.FromIntPtr(objPtr).Target;
+        TypedReference typeRef = __makeref(obj);
+        return **(IntPtr**)(&typeRef);
+    }
+
     public static UInt32 LoadAssembly(string name, ref IntPtr outAssembly)
     {
         Assembly assembly;

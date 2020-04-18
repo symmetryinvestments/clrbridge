@@ -154,6 +154,7 @@ struct ClrBridge
     {
         void function(const DotNetObject obj) nothrow @nogc Release;
         uint function(const DotNetObject obj, char *result) nothrow @nogc IsNull;
+        void* function(const DotNetObject obj,) nothrow @nogc ObjectHandleToGCPointer;
         uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
         uint function(const Assembly assembly, CString name, Type* outType) nothrow @nogc GetType;
         uint function(const Type type, const ArrayGeneric types, Type* outType) nothrow @nogc ResolveGenericType;
@@ -210,6 +211,11 @@ struct ClrBridge
     void release(const DotNetObject obj) const nothrow @nogc
     {
         funcs.Release(obj);
+    }
+
+    void* objectHandleToGCPointer(const DotNetObject obj) const
+    {
+        return funcs.ObjectHandleToGCPointer(obj);
     }
 
     bool isNull(const DotNetObject obj) const
