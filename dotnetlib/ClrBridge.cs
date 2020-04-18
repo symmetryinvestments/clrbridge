@@ -27,6 +27,13 @@ public static partial class ClrBridge
         GCHandle.FromIntPtr(ptr).Free();
     }
 
+    public static unsafe UInt32 IsNull(IntPtr objPtr, ref Byte result)
+    {
+        Object obj = GCHandle.FromIntPtr(objPtr).Target;
+        result = (obj == null) ? (Byte)1 : (Byte)0;
+        return ResultCode.Success;
+    }
+
     public static UInt32 LoadAssembly(string name, ref IntPtr outAssembly)
     {
         Assembly assembly;
@@ -115,7 +122,16 @@ public static partial class ClrBridge
         MethodInfo method = (MethodInfo)GCHandle.FromIntPtr(methodPtr).Target;
         Object obj = null;
         if (objPtr != IntPtr.Zero)
+        {
             obj = GCHandle.FromIntPtr(objPtr).Target;
+            // We deliberately check this and throw a similar exceptioni to what would normally
+            // be thrown rather than throwing a TargetInvocationException because we are using
+            // reflection to call the method.
+            if (obj == null)
+                throw new NullReferenceException(String.Format(
+                    "Object reference not set to an instance of an object (type={0}, method={1})",
+                    method.DeclaringType.FullName, method.Name));
+        }
         Object[] args = null;
         if (argsArrayPtr != IntPtr.Zero)
             args = (Object[])GCHandle.FromIntPtr(argsArrayPtr).Target;

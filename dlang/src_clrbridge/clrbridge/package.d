@@ -153,6 +153,7 @@ struct ClrBridge
     private mixin template FuncsMixin()
     {
         void function(const DotNetObject obj) nothrow @nogc Release;
+        uint function(const DotNetObject obj, char *result) nothrow @nogc IsNull;
         uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
         uint function(const Assembly assembly, CString name, Type* outType) nothrow @nogc GetType;
         uint function(const Type type, const ArrayGeneric types, Type* outType) nothrow @nogc ResolveGenericType;
@@ -209,6 +210,19 @@ struct ClrBridge
     void release(const DotNetObject obj) const nothrow @nogc
     {
         funcs.Release(obj);
+    }
+
+    bool isNull(const DotNetObject obj) const
+    {
+        import std.format : format;
+
+        char isNullValue = 2; // invalid value for sanity checking
+        const errorCode = funcs.IsNull(obj, &isNullValue);
+        if (errorCode != 0)
+            throw new Exception(format("ClrBridge.IsNull failed with: %s", ClrBridgeError.forward(errorCode)));
+        if (isNullValue == 0) return false;
+        if (isNullValue == 1) return true;
+        assert(0);
     }
 
     DotNetObject boxEnum(T)(const Type enumType, Enum!T enumValue)
