@@ -856,6 +856,20 @@ class Generator : ExtraReflection
             }
             context.ExitBlock();
         }
+        // We put all the property methods in a hash set so we can quickly test
+        // any method to see if it is a property
+        HashSet<MethodInfo> propertyMethods = new HashSet<MethodInfo>();
+        foreach (PropertyInfo property in type.GetProperties())
+        {
+            {
+                MethodInfo method = property.GetGetMethod(false);
+                if (method != null) propertyMethods.Add(method);
+            }
+            {
+                MethodInfo method = property.GetSetMethod(false);
+                if (method != null) propertyMethods.Add(method);
+            }
+        }
         foreach (MethodInfo method in type.GetMethods())
         {
             if (typeConfig.CheckIsMethodDisabled(method))
@@ -872,6 +886,9 @@ class Generator : ExtraReflection
                 continue;
             }
 
+            Boolean isProperty = propertyMethods.Contains(method);
+            if (isProperty)
+                context.Write("@property ");
             context.Write("{0}", method.IsPrivate ? "private" : "public");
             if (method.IsStatic)
             {
@@ -888,7 +905,20 @@ class Generator : ExtraReflection
                 context.Write(" void");
             else
                 context.Write(" {0}", context.TypeReferenceForD(this, method.ReturnType));
-            context.Write(" {0}", Util.ToDIdentifier(method.Name));
+
+            {
+                String dIdentifier = Util.ToDIdentifier(method.Name);
+                if (isProperty)
+                {
+                    if (dIdentifier.StartsWith("get_"))
+                        dIdentifier = dIdentifier.Substring(4);
+                    else if (dIdentifier.StartsWith("set_"))
+                        dIdentifier = dIdentifier.Substring(4);
+                    else
+                        throw new Exception(String.Format("all property methods are expected to start with 'get_' or 'set_' but found '{0}'", dIdentifier));
+                }
+                context.Write(" {0}", dIdentifier);
+            }
             ParameterInfo[] parameters = method.GetParameters();
             GenerateGenericParameters(context, genericArguments, type.GetGenericArgCount());
             GenerateParameterList(context, parameters);
