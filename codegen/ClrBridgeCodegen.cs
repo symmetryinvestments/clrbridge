@@ -603,11 +603,13 @@ class Generator : ExtraReflection
             Type[] genericArgs = type.GetGenericArguments();
             Debug.Assert(genericArgs.IsEmpty(), "enums can have generic arguments???");
             GenerateMetadata(context, type, genericArgs);
+            // We still have to generate some fields for enums even when they are disabled
+            // because they are value types
+            String baseTypeDName = context.TypeReferenceForD(this, Enum.GetUnderlyingType(type)); // TODO: Marshal Type instead???
+            context.WriteLine("__d.clr.Enum!{0} {1};", baseTypeDName, EnumValueFieldName);
+            context.WriteLine("alias {0} this;", EnumValueFieldName);
             if (typeConfigOrDisabled != null)
             {
-                String baseTypeDName = context.TypeReferenceForD(this, Enum.GetUnderlyingType(type)); // TODO: Marshal Type instead???
-                context.WriteLine("__d.clr.Enum!{0} {1};", baseTypeDName, EnumValueFieldName);
-                context.WriteLine("alias {0} this;", EnumValueFieldName);
                 context.WriteLine("enum : typeof(this)", baseTypeDName);
                 context.WriteLine("{");
                 UInt32 nonStaticFieldCount = 0;
