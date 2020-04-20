@@ -8,7 +8,7 @@
 // I should find a replacement for this.
 //
 import core.stdc.stdlib : exit;
-import std.algorithm, std.array, std.file, std.format, std.path, std.process, std.stdio, std.string;
+import std.algorithm, std.array, std.conv, std.file, std.format, std.path, std.process, std.stdio, std.string;
 
 int main(string[] args)
 {
@@ -158,7 +158,7 @@ struct Interpreter
             }
             if (!enabled)
             {
-                if (line.startsWith("@foreach") || line.startsWith("@scope"))
+                if (line.startsWith("@if") || line.startsWith("@foreach") || line.startsWith("@scope"))
                     blockLevel++;
                 lineIndex++;
                 continue;
@@ -189,6 +189,8 @@ struct Interpreter
             // Handle special builtins that affect control flow
             //
             if (false) { }
+            else if (cmd == "@if")
+                lineIndex = ifBuiltin(lineIndex, args);
             else if (cmd == "@foreach")
                 lineIndex = foreachBuiltin(lineIndex, args);
             else if (cmd == "@scope")
@@ -203,6 +205,8 @@ struct Interpreter
                         errorExit(scopeLineIndex, "@scope without an @end");
                     lineIndex++;
                 }
+                else if (args[0] == "@if")
+                    lineIndex = ifBuiltin(lineIndex, args[1..$]);
                 else if (args[0] == "@foreach")
                     lineIndex = foreachBuiltin(lineIndex, args[1..$]);
                 else
@@ -216,6 +220,39 @@ struct Interpreter
         }
     }
 
+    size_t ifBuiltin(size_t lineIndex, string[] args)
+    {
+        const endLineIndex = runLines(lineIndex + 1, evaluateIf(lineIndex, args));
+        if (endLineIndex == lines.length)
+            errorExit(endLineIndex - 1, "@if without an @end");
+        return endLineIndex + 1;
+    }
+
+    bool evaluateIf(size_t lineIndex, string[] args)
+    {
+        if (args.length == 0)
+            errorExit(lineIndex, "@if requires one or more arguments");
+        auto arg = args[0];
+        args = args[1..$];
+        bool not = false;
+        if (arg == "not")
+        {
+            not = true;
+            if (arg.length == 0)
+                errorExit(lineIndex, "'@if not' requires more arguments");
+            arg = args[0];
+            args = args[1..$];
+        }
+        if (arg == "exists")
+        {
+            if (args.length != 1)
+                errorExit(lineIndex, format("the 'exists' condition requires 1 argument but got %s", args.length));
+            return exists(args[0]).applyNot(not);
+        }
+        errorExit(lineIndex, format("unknown @if condition '%s'", arg));
+        assert(0);
+    }
+
     size_t foreachBuiltin(size_t lineIndex, string[] args)
     {
         size_t endLineIndex;
@@ -223,7 +260,7 @@ struct Interpreter
         {
             endLineIndex = runLines(lineIndex + 1, false);
             if (endLineIndex == lines.length)
-                errorExit(endLineIndex - 1, "@foreach without and @end");
+                errorExit(endLineIndex - 1, "@foreach without an @end");
         }
         else
         {
@@ -233,7 +270,7 @@ struct Interpreter
                 currentScope.vars[varName] = varValue;
                 endLineIndex = runLines(lineIndex + 1, true);
                 if (endLineIndex == lines.length)
-                    errorExit(endLineIndex - 1, "@foreach without and @end");
+                    errorExit(endLineIndex - 1, "@foreach without an @end");
             }
         }
         return endLineIndex + 1;
@@ -296,6 +333,11 @@ struct Interpreter
         {
             enforceArgCount(lineIndex, cmd, args, 2);
             copyFileOrDir(args[0], args[1]);
+        }
+        else if (cmd == "@exit")
+        {
+            enforceArgCount(lineIndex, cmd, args, 1);
+            exit(to!int(args[0]));
         }
         else errorExit(lineIndex, format("unknown builtin command '%s'", cmd));
     }
@@ -404,4 +446,9 @@ void rm(DirEntry entry)
         }
         rmdir(entry);
     }
+}
+
+bool applyNot(bool cond, bool not)
+{
+    return not ? !cond : cond;
 }
