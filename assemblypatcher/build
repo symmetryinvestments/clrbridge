@@ -3,7 +3,7 @@
 @rm ../out/assemblypatcher
 @mkdir ../out/assemblypatcher
 
-@set cecilDir ../out/Mono.Cecil_0.11.1/lib/net40
+@set cecilDir ../out-pure/Mono.Cecil_0.11.1/lib/net40
 
 ${dotnetCompiler} /out:../out/assemblypatcher/AssemblyPatcher.exe AssemblyPatcher.cs /reference:${cecilDir}/Mono.Cecil.dll
 @cp ${cecilDir}/Mono.Cecil.dll ../out/assemblypatcher/Mono.Cecil.dll

@@ -1,19 +1,24 @@
-@notwindows @default wget wget
-@notwindows @default unzip unzip
-@windows    @default 7z 7z
 
-@set name Mono.Cecil_0.11.1
+@set version 0.11.1
+@set name Mono.Cecil_${version}
 
-@rm ../out/${name}
-@mkdir ../out
+@if not exists ../out-pure/${name}
+    @notwindows @default wget wget
+    @notwindows @default unzip unzip
+    @windows    @default 7z 7z
 
-@set url https://www.nuget.org/api/v2/package/Mono.Cecil/0.11.1
-@notwindows ${wget} -O ../out/${name}.zip ${url}
-@windows    certutil -urlcache -split -f ${url} ../out/${name}.zip
+    @mkdir ../out-pure
 
-@mkdir ../out/${name}
+    @set url https://www.nuget.org/api/v2/package/Mono.Cecil/${version}
+    @notwindows ${wget} -O ../out-pure/${name}.zip ${url}
+    @windows    certutil -urlcache -split -f ${url} ../out-pure/${name}.zip
 
-@notwindows ${unzip} ../out/${name}.zip -d ../out/${name}
-@windows    ${7z} x -o../out/${name} ../out/${name}.zip
+    @rm ../out-pure/${name}.extracting
+    @mkdir ../out-pure/${name}.extracting
 
-@rm ../out/${name}.zip
+    @notwindows ${unzip} ../out-pure/${name}.zip -d ../out-pure/${name}.extracting
+    @windows    ${7z} x -o../out-pure/${name}.extracting ../out-pure/${name}.zip
+
+    @rm ../out-pure/${name}.zip
+    @mv ../out-pure/${name}.extracting ../out-pure/${name}
+@end
