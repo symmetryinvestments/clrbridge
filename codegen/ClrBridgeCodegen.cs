@@ -1418,8 +1418,6 @@ static class Util
         }
         return String.Join(".", parts);
     }
-    static readonly DKeyword[] DKeywords = new DKeyword[] {
-    };
     // add a trailing '_' to keywords
     public static String ToDIdentifier(this String s)
     {
