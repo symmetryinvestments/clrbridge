@@ -16,7 +16,7 @@ import cstring;
 import clrbridge;
 import clrbridge.coreclr;
 
-import mscorlib.System;
+import mscorlib.system;
 
 int main(string[] args)
 {

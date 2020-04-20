@@ -1,6 +1,6 @@
 import std.stdio;
 import cstring;
-import mscorlib.System;
+import mscorlib.system;
 
 void test()
 {

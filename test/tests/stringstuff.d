@@ -1,5 +1,5 @@
 import cstring;
-import mscorlib.System.Text;
+import mscorlib.system.text;
 
 void test()
 {

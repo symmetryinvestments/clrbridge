@@ -230,11 +230,13 @@ class ExtraReflection
     protected readonly Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap;
     protected readonly Assembly thisAssembly;
     protected readonly Dictionary<Type, ExtraTypeInfo> typeInfoMap;
-    public ExtraReflection(Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly)
+    protected readonly Boolean keepNamespaceCasing;
+    public ExtraReflection(Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, Boolean keepNamespaceCasing)
     {
         this.sharedAssemblyMap = sharedAssemblyMap;
         this.thisAssembly = thisAssembly;
         this.typeInfoMap = new Dictionary<Type,ExtraTypeInfo>();
+        this.keepNamespaceCasing = keepNamespaceCasing;
     }
 
     public ExtraAssemblyInfo GetExtraAssemblyInfo(Assembly assembly)
@@ -242,8 +244,11 @@ class ExtraReflection
         ExtraAssemblyInfo info;
         if (!sharedAssemblyMap.TryGetValue(assembly, out info))
         {
+            String name = assembly.GetName().Name;
+            if (!keepNamespaceCasing)
+                name = name.ToLowerInvariant();
             info = new ExtraAssemblyInfo(
-                assembly.GetName().Name.Replace(".", "_")
+                name.Replace(".", "_")
             );
             sharedAssemblyMap[assembly] = info;
         }
@@ -255,28 +260,28 @@ class ExtraReflection
         if (!typeInfoMap.TryGetValue(type, out info))
         {
             ExtraAssemblyInfo assemblyInfo = GetExtraAssemblyInfo(type.Assembly);
-            String moduleName = type.Namespace.IsEmpty() ? assemblyInfo.packageName :
-                String.Format("{0}.{1}", assemblyInfo.packageName, type.Namespace.ToDQualifiedIdentifier());
+            String moduleNameNoAssembly = Util.NamespaceToModuleQualifier(type.Namespace, keepNamespaceCasing);
+            String moduleName = Util.DottedJoin(assemblyInfo.packageName, moduleNameNoAssembly);
             String moduleRelativeName = type.GetUnqualifiedTypeNameForD();
             if (type.DeclaringType != null)
                 moduleRelativeName = String.Format("{0}.{1}", GetExtraTypeInfo(type.DeclaringType).moduleRelativeName, moduleRelativeName);
-            info = new ExtraTypeInfo(moduleName, moduleRelativeName);
+            info = new ExtraTypeInfo(moduleName, moduleNameNoAssembly, moduleRelativeName);
             typeInfoMap[type] = info;
         }
         return info;
     }
 
-    // namespaceContext is the C# Namespace for which code is currently being generated
-    public String ToDMarshalType(String namespaceContext, Type type)
+    // dQualifierContext is the D scope/qualified context for the code currently being generated
+    public String ToDMarshalType(String dQualifierContext, Type type)
     {
         if (type == typeof(Boolean)) return "ushort";
         String importQualifier;
-        return ToDEquivalentType(namespaceContext, type, out importQualifier);
+        return ToDEquivalentType(dQualifierContext, type, out importQualifier);
     }
 
     // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?
     // namespaceContext is the C# Namespace for which code is currently being generated
-    public String ToDEquivalentType(String namespaceContext, Type type, out String importQualifier)
+    public String ToDEquivalentType(String dQualifierContext, Type type, out String importQualifier)
     {
         // skip these types for now
         if (type.IsByRef || type.IsPointer)
@@ -286,7 +291,7 @@ class ExtraReflection
         /*
             Type elementType = type.GetElementType();
             Debug.Assert(elementType != type);
-            return "ref " + ToDEquivalentType(namespaceContext, elementType);
+            return "ref " + ToDEquivalentType(dQualifierContext, elementType);
             */
         }
 
@@ -315,7 +320,12 @@ class ExtraReflection
         //if (type == typeof(System.IntPtr)) { importQualifier = ""; return "void*"; }
         // TODO: using this causes D compiler to take too much memory while compiling mscorlib
         //       so for now I'm disabling it by using __d.clr.DotNetObject instead
-        //if (type == typeof(Object))  { importQualifier = "mscorlib.System"; return "mscorlib.System.MscorlibObject"; }
+        //if (type == typeof(Object))
+        //{
+            //String systemNamespace = NamespaceToModuleQualifier("System", config.dlangKeepOriginalCasing)
+            //importQualifier = "mscorlib." + systemNamespace;
+            //return "mscorlib." + systemNamespace + ".MscorlibObject";
+        //}
         if (type == typeof(Object))  { importQualifier = ""; return "__d.clr.DotNetObject"; }
 
         // TODO: do this for all types, not just enums
@@ -338,7 +348,7 @@ class ExtraReflection
         if (useRealType)
         {
             ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
-            if (type.Assembly == thisAssembly && namespaceContext == type.Namespace)
+            if (type.Assembly == thisAssembly && dQualifierContext == typeInfo.moduleName)
             {
                 importQualifier = "";
             }
@@ -362,19 +372,20 @@ class Generator : ExtraReflection
     readonly Config config;
     readonly String outputDir;
     readonly Dictionary<String,DModule> moduleMap;
-    readonly Dictionary<String,DModule> moduleUpperCaseMap;
+    readonly Dictionary<String,String> moduleUpperCaseMap; // used to detect casing differences
     readonly String thisAssemblyPackageName; // cached version of GetExtraAssemblyInfo(thisAssembly).packageName
     readonly String finalPackageDir;
     readonly String tempPackageDir;
     readonly AssemblyConfig assemblyConfig;
 
     public Generator(Config config, Dictionary<Assembly, ExtraAssemblyInfo> sharedAssemblyMap, Assembly thisAssembly, String outputDir, AssemblyConfig assemblyConfig)
-        : base(sharedAssemblyMap, thisAssembly)
+        : base(sharedAssemblyMap, thisAssembly, config.dlangKeepNamespaceCasing)
     {
         this.config = config;
         this.outputDir = outputDir;
         this.moduleMap = new Dictionary<String,DModule>();
-        this.moduleUpperCaseMap = new Dictionary<String,DModule>();
+        if (config.dlangKeepNamespaceCasing)
+            this.moduleUpperCaseMap = new Dictionary<String,String>();
         this.thisAssemblyPackageName = GetExtraAssemblyInfo(thisAssembly).packageName;
         this.finalPackageDir = Path.Combine(outputDir, this.thisAssemblyPackageName);
         this.tempPackageDir = this.finalPackageDir + ".generating";
@@ -475,29 +486,37 @@ class Generator : ExtraReflection
         foreach (Type type in rootTypes)
         {
             //writer.WriteLine("type {0}", type);
+            ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
+
             DModule module;
-            if (!moduleMap.TryGetValue(type.Namespace.NullToEmpty(), out module))
+            if (!moduleMap.TryGetValue(typeInfo.moduleName, out module))
             {
-                String namespaceUpper = type.Namespace.NullToEmpty().ToUpper();
-                if (moduleUpperCaseMap.TryGetValue(namespaceUpper, out module))
+                if (config.dlangKeepNamespaceCasing)
                 {
-                    // This is a problem because we cannot create files/directories that only differ in casing on windows.
-                    // Futhermore, the code could be generated on windows/linux and move to or from the other so we shouldn't
-                    // generated different code for windows/linux.
-                    // One solution would be to normalize all the namespaces to lowercase (D style), however that would cause
-                    // a problem if a C# application intentionally used different case to declare the same symbols.
-                    // For now, I'll assert an error if this happens, and maybe write a tool to fix an assembly that has this problem.
-                    Console.WriteLine("Error: there are multiple namespaces that match but have different upper/lower casing:");
-                    Console.WriteLine("    {0}", module.dotnetNamespace);
-                    Console.WriteLine("    {0}", type.Namespace);
-                    throw new AlreadyReportedException();
+                    // Detect casing errors
+                    String moduleNameUpper = typeInfo.moduleName.ToUpper();
+                    String casingConflict;
+                    if (moduleUpperCaseMap.TryGetValue(moduleNameUpper, out casingConflict))
+                    {
+                        // This is a problem because we cannot create files/directories that only differ in casing on windows.
+                        // Futhermore, the code could be generated on windows/linux and move to or from the other so we shouldn't
+                        // generated different code for windows/linux.
+                        // One solution would be to normalize all the namespaces to lowercase (D style), however that would cause
+                        // a problem if a C# application intentionally used different case to declare the same symbols.
+                        // For now, I'll assert an error if this happens, and maybe write a tool to fix an assembly that has this problem.
+                        Console.WriteLine("Error: there are multiple namespaces that match but have different upper/lower casing:");
+                        Console.WriteLine("    {0}", casingConflict);
+                        Console.WriteLine("    {0}", type.Namespace);
+                        throw new AlreadyReportedException();
+                    }
                 }
-                String outputDFilename = Path.Combine(tempPackageDir, Util.NamespaceToModulePath(type.Namespace));
+
+                String outputDFilename = Path.Combine(tempPackageDir,
+                    Path.Combine(typeInfo.moduleNameNoAssembly.Replace('.', Path.DirectorySeparatorChar), "package.d"));
                 Console.WriteLine("[DEBUG] NewDModule '{0}'", outputDFilename);
                 Directory.CreateDirectory(Path.GetDirectoryName(outputDFilename));
                 StreamWriter writer = new StreamWriter(new FileStream(outputDFilename, FileMode.Create, FileAccess.Write, FileShare.Read));
-                ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
-                module = new DModule(thisAssembly, type.Namespace, typeInfo.moduleName, writer);
+                module = new DModule(thisAssembly, typeInfo.moduleName, writer);
                 writer.WriteLine("module {0};", typeInfo.moduleName);
                 writer.WriteLine("");
                 writer.WriteLine("// Keep D Symbols inside the __d struct to prevent symbol conflicts");
@@ -509,8 +528,7 @@ class Generator : ExtraReflection
                 writer.WriteLine("    import clrbridge.global : globalClrBridge;");
                 writer.WriteLine("    alias ObjectArray = clrbridge.Array!(clr.PrimitiveType.Object);");
                 writer.WriteLine("}");
-                moduleMap.Add(type.Namespace.NullToEmpty(), module);
-                moduleUpperCaseMap.Add(namespaceUpper, module);
+                moduleMap.Add(typeInfo.moduleName, module);
             }
             GenerateType(module, type);
         }
@@ -527,7 +545,7 @@ class Generator : ExtraReflection
             writer.WriteLine("module {0}.all;", thisAssemblyPackageName);
             foreach (DModule module in moduleMap.Values)
             {
-                writer.WriteLine("public import {0};", module.fullName);
+                writer.WriteLine("public import {0};", module.dQualifierContext);
             }
         }
 
@@ -1180,7 +1198,7 @@ abstract class DContext : IDisposable
 {
     static readonly TabStringPool TabPool = new TabStringPool();
 
-    public readonly String dotnetNamespace;
+    public readonly String dQualifierContext;
     public readonly TextWriter writer;
     internal UInt16 depth;
     internal Boolean atMiddleOfLine;
@@ -1191,9 +1209,9 @@ abstract class DContext : IDisposable
     // compiler seems to have trouble with that idiom when there are circular references between modules
     public readonly Dictionary<Type,ModuleTypeRef> typeRefMap;
 
-    public DContext(String dotnetNamespace, TextWriter writer, UInt16 depth)
+    public DContext(String dQualifierContext, TextWriter writer, UInt16 depth)
     {
-        this.dotnetNamespace = dotnetNamespace;
+        this.dQualifierContext = dQualifierContext;
         this.writer = writer;
         this.depth = depth;
         this.atMiddleOfLine = false;
@@ -1207,7 +1225,7 @@ abstract class DContext : IDisposable
         if (!typeRefMap.TryGetValue(type, out typeRef))
         {
             String importQualifier;
-            String dTypeString = extraReflection.ToDEquivalentType(dotnetNamespace, type, out importQualifier);
+            String dTypeString = extraReflection.ToDEquivalentType(dQualifierContext, type, out importQualifier);
             typeRef = new ModuleTypeRef(importQualifier, dTypeString);
             typeRefMap[type] = typeRef;
         }
@@ -1267,12 +1285,10 @@ abstract class DContext : IDisposable
 class DModule : DContext
 {
     public readonly Assembly assembly;
-    public readonly String fullName;
-    public DModule(Assembly assembly, String dotnetNamespace, String fullName, StreamWriter writer)
-        : base(dotnetNamespace, writer, 0)
+    public DModule(Assembly assembly, String fullName, StreamWriter writer)
+        : base(fullName, writer, 0)
     {
         this.assembly = assembly;
-        this.fullName = fullName;
     }
     public override void Dispose()
     {
@@ -1285,7 +1301,7 @@ class DTypeContext : DContext
 {
     private readonly DContext parentContext;
     public DTypeContext(DContext parentContext)
-        : base(parentContext.dotnetNamespace, parentContext.writer, parentContext.depth)
+        : base(parentContext.dQualifierContext, parentContext.writer, parentContext.depth)
     {
         // we assume we are on a newline so that the method body starts on it's own line
         Debug.Assert(parentContext.atMiddleOfLine == false, "codebug");
@@ -1303,7 +1319,7 @@ class DMethodContext : DContext
 {
     readonly DTypeContext typeContext;
     public DMethodContext(DTypeContext typeContext)
-       : base(typeContext.dotnetNamespace, new StringWriter(), typeContext.depth)
+       : base(typeContext.dQualifierContext, new StringWriter(), typeContext.depth)
     {
         // we assume we are on a newline so that the method body starts on it's own line
         Debug.Assert(typeContext.atMiddleOfLine == false, "codebug");
@@ -1339,12 +1355,14 @@ class ExtraAssemblyInfo
 class ExtraTypeInfo
 {
     public readonly String moduleName;
+    public readonly String moduleNameNoAssembly;
     // Name of the type if referencing from the root of the module
     public readonly String moduleRelativeName;
     public readonly List<Type> subTypes; // types that are declared inside this type
-    public ExtraTypeInfo(String moduleName, String moduleRelativeName)
+    public ExtraTypeInfo(String moduleName, String moduleNameNoAssembly, String moduleRelativeName)
     {
         this.moduleName = moduleName;
+        this.moduleNameNoAssembly = moduleNameNoAssembly;
         this.moduleRelativeName = moduleRelativeName;
         this.subTypes = new List<Type>();
     }
@@ -1395,29 +1413,28 @@ struct DKeyword
 static class Util
 {
     static readonly Char[] DotCharArray = new Char[] {'.'};
-    public static String NamespaceToModulePath(String @namespace)
+    static String ToDottedDSymbol(String dottedClrSymbol)
     {
-        String path = "";
-        if (@namespace != null)
-        {
-            @namespace = @namespace.ToDQualifiedIdentifier();
-            foreach (String part in @namespace.Split('.'))
-            {
-                path = Path.Combine(path, part);
-            }
-        }
-        return Path.Combine(path, "package.d");
-    }
-    public static String ToDQualifiedIdentifier(this String s)
-    {
-        // TODO: this is definitely innefficient
-        String[] parts = s.Split(DotCharArray);
+        // TODO: would it be worth it to make this more efficient?
+        String[] parts = dottedClrSymbol.Split(DotCharArray);
         for (UInt32 i = 0; i < parts.Length; i++)
         {
             parts[i] = ToDIdentifier(parts[i]);
         }
         return String.Join(".", parts);
     }
+    public static String NamespaceToModuleQualifier(String @namespace, Boolean keepOriginalCasing)
+    {
+        if (@namespace.IsEmpty()) return "";
+        return ToDottedDSymbol(keepOriginalCasing ? @namespace : @namespace.ToLowerInvariant());
+    }
+    public static String DottedJoin(String a, String b)
+    {
+        if (a.IsEmpty()) return b;
+        if (b.IsEmpty()) return a;
+        return a + "." + b;
+    }
+
     // add a trailing '_' to keywords
     public static String ToDIdentifier(this String s)
     {

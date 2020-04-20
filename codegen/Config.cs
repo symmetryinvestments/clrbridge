@@ -67,6 +67,12 @@ class ConfigParser
             config = new Config(filename, whitelist);
         }
         // TODO: implement ExcludeAssembly (only allow if Assemblies is not in Whitelist mode)
+        else if (directive == "DlangKeepNamespaceCasing")
+        {
+            EnforceInAssembliesConfig(directive);
+            EnforceDirectiveDone(directive, remaining);
+            config.dlangKeepNamespaceCasing = true;
+        }
         else if (directive == "Assembly")
         {
             EnforceHaveAssembliesConfig(directive);
@@ -111,17 +117,26 @@ class ConfigParser
         }
         else throw ParseException(String.Format("Unknown directive '{0}'", directive));
     }
+
     void EnforceHaveAssembliesConfig(String directive)
     {
         if (config == null)
             throw ParseException(String.Format("directive '{0}' must appear after the 'Assemblies' directive", directive));
     }
+    void EnforceInAssembliesConfig(String directive)
+    {
+        EnforceHaveAssembliesConfig(directive);
+        if (currentAssembly != null)
+            throw ParseException(String.Format("directive '{0}' must in the 'Assemblies' directive", directive));
+    }
+
     void EnforceHaveAssembly(String directive)
     {
         if (currentAssembly == null)
             throw ParseException(String.Format("directive '{0}' must appear after an 'Assembly' directive", directive));
         Debug.Assert(config != null); // code bug if fails
     }
+
     void EnforceHaveType(String directive)
     {
         if (currentType == null)
@@ -235,6 +250,7 @@ class Config
     public readonly String filename;
     public readonly Boolean whitelist;
     public readonly Dictionary<String,AssemblyConfig> assemblyMap = new Dictionary<String,AssemblyConfig>();
+    public Boolean dlangKeepNamespaceCasing = false;
     public Config(String filename, Boolean whitelist)
     {
         this.filename = filename;

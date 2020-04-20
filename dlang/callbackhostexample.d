@@ -2,7 +2,7 @@ import std.stdio;
 import cstring;
 import clrbridge;
 import clrbridge.callbackhost;
-import mscorlib.System;
+import mscorlib.system;
 
 export extern (C) int _clrCallbackHostEntry(CreateDelegate createDelegate, int argc, CString* argv/*, CString* envp*/)
 {
