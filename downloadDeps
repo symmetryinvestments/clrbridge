@@ -16,7 +16,9 @@
 
 # install the unversioned copy (symlink on linux)
 @mkdir out
-@notwindows unlink out/DerelictUtil
+@if exists out/DerelictUtil
+    @notwindows unlink out/DerelictUtil
+@end
 @notwindows ln -sf ../out-pure/DerelictUtil-${release} out/DerelictUtil
 @windows    @rm out/DerelictUtil
 @windows    @cp out-pure/DerelictUtil-${release} out/DerelictUtil
