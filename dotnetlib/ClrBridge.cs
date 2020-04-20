@@ -186,25 +186,18 @@ public static partial class ClrBridge
         }
     }
 
-    public static UInt32 ArrayBuilderNew(IntPtr typePtr, UInt32 initialSize, ref IntPtr outBuilder)
+    public static UInt32 NewArray(IntPtr typePtr, UInt32 length, ref IntPtr outArray)
     {
         Type type = (Type)GCHandle.FromIntPtr(typePtr).Target;
-        Type arrayType = typeof(ArrayBuilder<>).MakeGenericType(type);
-        outBuilder = GCHandle.ToIntPtr(GCHandle.Alloc(Activator.CreateInstance(arrayType, initialSize)));
+        outArray = GCHandle.ToIntPtr(GCHandle.Alloc(Array.CreateInstance(type, length)));
         return ResultCode.Success;
     }
-    public static UInt32 ArrayBuilderFinish(IntPtr arrayBuilderPtr, ref IntPtr outArray)
+    public static UInt32 ArraySet(IntPtr arrayPtr, Int32 index, IntPtr objPtr)
     {
-        Object arrayBuilder = GCHandle.FromIntPtr(arrayBuilderPtr).Target;
-        outArray = GCHandle.ToIntPtr(GCHandle.Alloc(
-            arrayBuilder.GetType().GetMethod("Finish").Invoke(arrayBuilder, null)));
-        return ResultCode.Success;
-    }
-    public static void ArrayBuilderAddGeneric(IntPtr arrayBuilderPtr, IntPtr objPtr)
-    {
-        Object arrayBuilder = GCHandle.FromIntPtr(arrayBuilderPtr).Target;
+        Array array = (Array)GCHandle.FromIntPtr(arrayPtr).Target;
         Object obj = GCHandle.FromIntPtr(objPtr).Target;
-        arrayBuilder.GetType().GetMethod("Add").Invoke(arrayBuilder, new Object[] {obj});
+        array.SetValue(obj, index);
+        return ResultCode.Success;
     }
 
     public static void DebugWriteObject(IntPtr objPtr)
@@ -229,44 +222,5 @@ public static partial class ClrBridge
     {
         Type enumType = (Type)GCHandle.FromIntPtr(enumTypePtr).Target;
         return GCHandle.ToIntPtr(GCHandle.Alloc(Enum.ToObject(enumType, enumValue)));
-    }
-}
-
-public class ArrayBuilder<T>
-{
-    const Int32 DefaultInitialSize = 16;
-
-    T[] array;
-    Int32 count;
-
-    public ArrayBuilder(UInt32 initialSize)
-        : this(new T[initialSize], 0)
-    {
-    }
-    public ArrayBuilder(T[] array, Int32 count)
-    {
-        this.array = array;
-        this.count = count;
-    }
-
-    public void Add(T obj)
-    {
-        if (this.count >= array.Length)
-        {
-            T[] newArray = new T[this.array.Length * 2];
-            Array.Copy(this.array, newArray, this.count);
-            this.array = newArray;
-        }
-        this.array[this.count++] = obj;
-    }
-    public T[] Finish()
-    {
-        if (array.Length != count)
-        {
-            T[] newArray = new T[this.count];
-            Array.Copy(this.array, newArray, this.count);
-            this.array = newArray;
-        }
-        return this.array;
     }
 }

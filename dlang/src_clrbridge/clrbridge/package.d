@@ -1,5 +1,6 @@
 module clrbridge;
 
+import std.typecons : Flag, Yes, No;
 import std.traits : Parameters;
 
 import cstring : CString, CStringLiteral;
@@ -10,15 +11,28 @@ import core.stdc.stdlib : malloc, free;
 static import clr;
 import clr : DotNetObject, Enum, Decimal, TypeSpec;
 
-mixin template DotnetPrimitiveWrappers(string funcName)
+mixin template DotnetPrimitiveWrappers(string funcName, Flag!"skipObject" skipObject = No.skipObject)
 {
     static foreach (type; clr.primitiveTypes)
     {
-        mixin("auto " ~ funcName ~ type.name ~ "(Parameters!(" ~ funcName ~ "!(clr.PrimitiveType." ~ type.name ~ ")) args)" ~
-            "{ return " ~ funcName ~ "!(clr.PrimitiveType." ~ type.name ~ ")(args); }");
+        static if (!skipObject || type.type != clr.PrimitiveType.Object)
+        {
+            mixin("auto " ~ funcName ~ type.name ~ "(Parameters!(" ~ funcName ~ "Primitive!(clr.PrimitiveType." ~ type.name ~ ")) args)" ~
+                "{ return " ~ funcName ~ "Primitive!(clr.PrimitiveType." ~ type.name ~ ")(args); }");
+        }
     }
 }
-
+mixin template DotnetPrimitiveVarargWrappers(string funcName, Flag!"skipObject" skipObject = No.skipObject)
+{
+    static foreach (type; clr.primitiveTypes)
+    {
+        static if (!skipObject || type.type != clr.PrimitiveType.Object)
+        {
+            mixin("auto " ~ funcName ~ type.name ~ "(T...)(T templateVarargs)" ~
+                "{ return " ~ funcName ~ "Primitive!(clr.PrimitiveType." ~ type.name ~ ", T)(templateVarargs); }");
+        }
+    }
+}
 
 mixin template DotNetObjectMixin(BaseType)
 {
@@ -41,8 +55,10 @@ struct Type         { mixin DotNetObjectMixin!DotNetObject; }
 struct ConstructorInfo { mixin DotNetObjectMixin!DotNetObject; }
 struct MethodInfo   { mixin DotNetObjectMixin!DotNetObject; }
 
-struct Array(clr.PrimitiveType T) { mixin DotNetObjectMixin!DotNetObject; }
-struct ArrayGeneric { mixin DotNetObjectMixin!DotNetObject; }
+struct Array { mixin DotNetObjectMixin!DotNetObject; }
+// Rather than using Array, ArrayPrimitive can be used to help detect Array type mismatches at
+// compile-time if the element type is a primitive type.
+struct ArrayPrimitive(clr.PrimitiveType T) { mixin DotNetObjectMixin!Array; }
 
 struct ArrayBuilder(clr.PrimitiveType T) { mixin DotNetObjectMixin!DotNetObject; }
 struct ArrayBuilderGeneric { mixin DotNetObjectMixin!DotNetObject; }
@@ -157,22 +173,24 @@ struct ClrBridge
         void* function(const DotNetObject obj,) nothrow @nogc ObjectHandleToGCPointer;
         uint function(CString name, Assembly* outAssembly) nothrow @nogc LoadAssembly;
         uint function(const Assembly assembly, CString name, Type* outType) nothrow @nogc GetType;
-        uint function(const Type type, const ArrayGeneric types, Type* outType) nothrow @nogc ResolveGenericType;
-        uint function(const Type type, const ArrayGeneric paramTypes, ConstructorInfo* outConstructor) nothrow @nogc GetConstructor;
-        uint function(const Type type, CString name, const ArrayGeneric paramTypes, MethodInfo* outMethod) nothrow @nogc GetMethod;
-        uint function(const ConstructorInfo constructor, const Array!(clr.PrimitiveType.Object) args, DotNetObject* outObjectPtr) nothrow @nogc CallConstructor;
-        void function(const MethodInfo method, const DotNetObject obj, const Array!(clr.PrimitiveType.Object) args, void** returnValuePtr) nothrow @nogc CallGeneric;
-        uint function(const Type type, uint initialsize, ArrayBuilderGeneric* outBuilder) nothrow @nogc ArrayBuilderNew;
-        uint function(const ArrayBuilderGeneric builder, ArrayGeneric* outArray) nothrow @nogc ArrayBuilderFinish;
-        size_t function(const ArrayBuilderGeneric builder, const DotNetObject obj) nothrow @nogc ArrayBuilderAddGeneric;
+        uint function(const Type type, const Array types, Type* outType) nothrow @nogc ResolveGenericType;
+        uint function(const Type type, const Array paramTypes, ConstructorInfo* outConstructor) nothrow @nogc GetConstructor;
+        uint function(const Type type, CString name, const Array paramTypes, MethodInfo* outMethod) nothrow @nogc GetMethod;
+        uint function(const ConstructorInfo constructor, const ArrayPrimitive!(clr.PrimitiveType.Object) args, DotNetObject* outObjectPtr) nothrow @nogc CallConstructor;
+        void function(const MethodInfo method, const DotNetObject obj, const ArrayPrimitive!(clr.PrimitiveType.Object) args, void** returnValuePtr) nothrow @nogc CallGeneric;
+        uint function(const Type type, uint length, Array* outArray) nothrow @nogc NewArray;
+        uint function(const Array array, int index, const DotNetObject obj) nothrow @nogc ArraySet;
 
         DotNetObject function(const Type type, const ulong value) nothrow @nogc BoxEnumUInt64;
         static foreach (type; clr.primitiveTypes)
         {
-            mixin("DotNetObject function(" ~ type.marshalType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
-            mixin("size_t function(const MethodInfo method, " ~ type.marshalType ~ ") nothrow @nogc CallStatic" ~ type.name ~ ";");
-            mixin("size_t function(const ArrayBuilder!(clr.PrimitiveType." ~ type.name ~ ") builder, "
-                ~ type.marshalType ~ ") nothrow @nogc ArrayBuilderAdd" ~ type.name ~ ";");
+            mixin("DotNetObject function(const " ~ type.marshalType ~ ") nothrow @nogc Box" ~ type.name ~ ";");
+            mixin("void function(const MethodInfo method, " ~ type.marshalType ~ ") nothrow @nogc CallStatic" ~ type.name ~ ";");
+            static if (type.type != clr.PrimitiveType.Object)
+            {
+                mixin("void function(const ArrayPrimitive!(clr.PrimitiveType." ~ type.name ~ ") array, int index," ~
+                    "const " ~ type.marshalType ~ " value) nothrow @nogc ArraySet" ~ type.name ~ ";");
+            }
         }
         void function(const DotNetObject obj) nothrow @nogc DebugWriteObject;
     }
@@ -236,12 +254,12 @@ struct ClrBridge
         // TODO: will this handle signed types correct?  Maybe I need to cast to long first for singed types?
         return funcs.BoxEnumUInt64(enumType, cast(ulong)enumValue.integerValue);
     }
-    ClrBridgeError tryBox(string typeName)(clr.DlangType!typeName value, DotNetObject *outObject) nothrow @nogc
+    ClrBridgeError tryBox(string typeName)(const clr.DlangType!typeName value, DotNetObject *outObject) nothrow @nogc
     {
         *outObject = mixin("funcs.Box" ~ typeName ~ "(value)");
         return ClrBridgeError.none;
     }
-    DotNetObject box(string typeName)(clr.DlangType!typeName value)
+    DotNetObject box(string typeName)(const clr.DlangType!typeName value)
     {
         import std.format : format;
 
@@ -288,14 +306,14 @@ struct ClrBridge
         return type;
     }
 
-    ClrBridgeError tryResolveGenericType(const Type type, const ArrayGeneric types, Type* outType) nothrow @nogc
+    ClrBridgeError tryResolveGenericType(const Type type, const Array types, Type* outType) nothrow @nogc
     {
         const errorCode = funcs.ResolveGenericType(type, types, outType);
         if (errorCode != 0)
             return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
-    Type resolveGenericType(const Type type, const ArrayGeneric types)
+    Type resolveGenericType(const Type type, const Array types)
     {
         import std.format : format;
         Type closedType;
@@ -305,14 +323,14 @@ struct ClrBridge
         return closedType;
     }
 
-    ClrBridgeError tryGetConstructor(const Type type, const ArrayGeneric paramTypes, ConstructorInfo* outConstructor) nothrow @nogc
+    ClrBridgeError tryGetConstructor(const Type type, const Array paramTypes, ConstructorInfo* outConstructor) nothrow @nogc
     {
         const errorCode = funcs.GetConstructor(type, paramTypes, outConstructor);
         if (errorCode != 0)
             return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
-    ConstructorInfo getConstructor(const Type type, const ArrayGeneric paramTypes)
+    ConstructorInfo getConstructor(const Type type, const Array paramTypes)
     {
         import std.format : format;
 
@@ -323,14 +341,14 @@ struct ClrBridge
         return constructor;
     }
 
-    ClrBridgeError tryGetMethod(const Type type, CString name, const ArrayGeneric paramTypes, MethodInfo* outMethod) nothrow @nogc
+    ClrBridgeError tryGetMethod(const Type type, CString name, const Array paramTypes, MethodInfo* outMethod) nothrow @nogc
     {
         const errorCode = funcs.GetMethod(type, name, paramTypes, outMethod);
         if (errorCode != 0)
             return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
-    MethodInfo getMethod(const Type type, CString name, const ArrayGeneric paramTypes)
+    MethodInfo getMethod(const Type type, CString name, const Array paramTypes)
     {
         import std.format : format;
 
@@ -341,14 +359,14 @@ struct ClrBridge
         return method;
     }
 
-    ClrBridgeError tryCallConstructor(const ConstructorInfo constructor, const Array!(clr.PrimitiveType.Object) args, DotNetObject* outObjectPtr) nothrow @nogc
+    ClrBridgeError tryCallConstructor(const ConstructorInfo constructor, const ArrayPrimitive!(clr.PrimitiveType.Object) args, DotNetObject* outObjectPtr) nothrow @nogc
     {
         const errorCode = funcs.CallConstructor(constructor, args, outObjectPtr);
         if (errorCode != 0)
             return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
-    DotNetObject callConstructor(const ConstructorInfo constructor, const Array!(clr.PrimitiveType.Object) args)
+    DotNetObject callConstructor(const ConstructorInfo constructor, const ArrayPrimitive!(clr.PrimitiveType.Object) args)
     {
         import std.format : format;
         DotNetObject obj;
@@ -358,128 +376,167 @@ struct ClrBridge
         return obj;
     }
 
-    ClrBridgeError tryArrayBuilderNewGeneric(const Type type, uint initialSize, ArrayBuilderGeneric* outBuilder) nothrow @nogc
+    ClrBridgeError tryNewArray(const Type type, uint length, Array* outArray) nothrow @nogc
     {
-        const errorCode = funcs.ArrayBuilderNew(type, initialSize, outBuilder);
+        const errorCode = funcs.NewArray(type, length, outArray);
         if (errorCode != 0)
             return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
-    ClrBridgeError tryArrayBuilderNew(clr.PrimitiveType T)(uint initialSize, ArrayBuilder!T* outBuilder) nothrow @nogc
+    ClrBridgeError tryNewArrayPrimitive(clr.PrimitiveType T)(uint length, ArrayPrimitive!T* outArray) nothrow @nogc
     {
-        return tryArrayBuilderNewGeneric(primitiveTypes.array[T], initialSize, cast(ArrayBuilderGeneric*)outBuilder);
+        return tryNewArray(primitiveTypes.array[T], length, cast(Array*)outArray);
     }
-    ArrayBuilderGeneric arrayBuilderNewGeneric(const Type type, uint initialSize)
+    mixin DotnetPrimitiveWrappers!("tryNewArray");
+
+    Array newArray(const Type type, uint length)
     {
         import std.format : format;
 
-        ArrayBuilderGeneric builder;
-        const result = tryArrayBuilderNewGeneric(type, initialSize, &builder);
+        Array array;
+        const result = tryNewArray(type, length, &array);
         if (result.failed)
-            throw new Exception(format("failed to create arraybuilder: %s", result));
-        return builder;
-    }
-    ArrayBuilder!T arrayBuilderNew(clr.PrimitiveType T)(uint initialSize)
-    {
-        import std.format : format;
-
-        ArrayBuilder!T builder;
-        const result = tryArrayBuilderNew!T(initialSize, &builder);
-        if (result.failed)
-            throw new Exception(format("failed to create arraybuilder: %s", result));
-        return builder;
-    }
-    mixin DotnetPrimitiveWrappers!("arrayBuilderNew");
-
-    void arrayBuilderAddGeneric(const ArrayBuilderGeneric ab, const DotNetObject obj) nothrow @nogc
-    {
-        funcs.ArrayBuilderAddGeneric(ab, obj);
-    }
-    void arrayBuilderAdd(clr.PrimitiveType T)(const ArrayBuilder!T ab, clr.DlangType!T value) nothrow @nogc
-    {
-        mixin("funcs.ArrayBuilderAdd" ~ clr.Info!T.name ~ "(ab, value);");
-    }
-    mixin DotnetPrimitiveWrappers!("arrayBuilderAdd");
-
-    ClrBridgeError tryArrayBuilderFinishGeneric(const ArrayBuilderGeneric ab, ArrayGeneric* outArray) nothrow @nogc
-    {
-        const errorCode = funcs.ArrayBuilderFinish(ab, outArray);
-        if (errorCode != 0)
-            return ClrBridgeError.forward(errorCode);
-        return ClrBridgeError.none;
-    }
-    ClrBridgeError tryArrayBuilderFinish(clr.PrimitiveType T)(const ArrayBuilder!T ab, Array!T* outArray) nothrow @nogc
-    {
-        return tryArrayBuilderFinishGeneric(structCast!ArrayBuilderGeneric(ab), cast(ArrayGeneric*)outArray);
-    }
-    mixin DotnetPrimitiveWrappers!("tryArrayBuilderFinish");
-
-    ArrayGeneric arrayBuilderFinishGeneric(const ArrayBuilderGeneric ab)
-    {
-        import std.format : format;
-
-        ArrayGeneric array;
-        const result = tryArrayBuilderFinishGeneric(ab, &array);
-        if (result.failed)
-            throw new Exception(format("arrayBuilderFinish failed: %s", result));
+            throw new Exception(format("failed to create array: %s", result));
         return array;
     }
-    Array!T arrayBuilderFinish(clr.PrimitiveType T)(const ArrayBuilder!T ab)
+    ArrayPrimitive!T newArrayPrimitive(clr.PrimitiveType T)(uint length)
     {
-        return structCast!(Array!T)(arrayBuilderFinishGeneric(structCast!ArrayBuilderGeneric(ab)));
+        import std.format : format;
+
+        ArrayPrimitive!T array;
+        const result = tryNewArrayPrimitive!T(length, &array);
+        if (result.failed)
+            throw new Exception(format("failed to create array: %s", result));
+        return array;
     }
-    mixin DotnetPrimitiveWrappers!("arrayBuilderFinish");
+    mixin DotnetPrimitiveWrappers!("newArray");
+
+    void arraySet(const Array array, int index, const DotNetObject obj) nothrow @nogc
+    {
+        assert(0 == funcs.ArraySet(array, index, obj));
+    }
+    void arraySetPrimitive(clr.PrimitiveType T)(const ArrayPrimitive!T array, int index, const clr.DlangType!T value) nothrow @nogc
+    {
+        enum primitiveTypeInfo = clr.Info!T;
+        mixin(`funcs.ArraySet` ~ primitiveTypeInfo.name ~ `(array, index, value);`);
+    }
+    mixin DotnetPrimitiveWrappers!("arraySet", Yes.skipObject);
 
     /// Create a .NET array with the given arguments
-    ClrBridgeError tryMakeGenericArray(T...)(Type type, ArrayGeneric* outArray, T args) nothrow @nogc
+    ClrBridgeError tryArgsToArrayOf(T...)(Type type, Array* outArray, T args) nothrow @nogc
     {
+        Array array;
+        {
+            const result = tryNewArray(type, T.length, &array);
+            if (result.failed) return result;
+        }
+        foreach (i, arg; args)
+        {
+            arraySet(array, i, arg);
+        }
+        *outArray = array;
+        return ClrBridgeError.none;
+    }
+    // This is a special case of primitive type because we can't pass non-object arguments
+    // to a Clr method with Object.
+    ClrBridgeError tryArgsToArrayOfObject(T...)(ArrayPrimitive!(clr.PrimitiveType.Object)* outArray, T args) nothrow @nogc
+    {
+        return tryArgsToArrayOf!T(primitiveTypes.Object, cast(Array*)outArray, args);
+    }
+    ClrBridgeError tryArgsToArrayOfPrimitive(clr.PrimitiveType T, U...)(ArrayPrimitive!T* outArray, /*clr.DlangType!T[]*/U args) nothrow @nogc
+    {
+        ArrayPrimitive!T array;
+        {
+            const result = tryNewArrayPrimitive!T(args.length.intCast!uint, &array);
+            if (result.failed) return result;
+        }
+        foreach (i, arg; args)
+        {
+            arraySetPrimitive!T(array, i.intCast!int, arg);
+        }
+        *outArray = array;
+        return ClrBridgeError.none;
+    }
+
+    Array argsToArrayOf(T...)(Type type, T args)
+    {
+        import std.format : format;
+
+        Array array;
+        const result = tryArgsToArrayOf(type, &array, args);
+        if (result.failed)
+            throw new Exception(format("tryArgsToArrayOf failed: %s", result));
+        return array;
+    }
+    // This is a special case of primitive type because we can't pass non-object arguments
+    // to a Clr method with Object.
+    ArrayPrimitive!(clr.PrimitiveType.Object) argsToArrayOfObject(T...)(T args)
+    {
+        import std.format : format;
+
+        ArrayPrimitive!(clr.PrimitiveType.Object) array;
+        const result = tryArgsToArrayOfObject(&array, args);
+        if (result.failed)
+            throw new Exception(format("tryArgsToArrayOfObject failed: %s", result));
+        return array;
+    }
+    ArrayPrimitive!T argsToArrayOfPrimitive(clr.PrimitiveType T, U...)(/*clr.DlangType!T[]*/U args)
+    {
+        import std.format : format;
+
+        ArrayPrimitive!T array;
+        const result = tryArgsToArrayOfPrimitive!(T,U)(&array, args);
+        if (result.failed)
+            throw new Exception(format("tryArgsToArrayOfPrimitive failed: %s", result));
+        return array;
+    }
+    mixin DotnetPrimitiveVarargWrappers!("argsToArrayOf", Yes.skipObject);
+
+
+    /*
+    // convert a native array to a clr array
+    // TODO: implement this
+    ClrBridgeError tryToClrArray(T)(Type type, Array* outClrArray, T[] inArray) nothrow @nogc
+    {
+        // NOTE: this can be done with 1 function call
+        // pass in the array pointer, and element size, then the Clr could create an array from that
         ArrayBuilderGeneric builder;
         {
             const result = tryArrayBuilderNewGeneric(type, T.length, &builder);
             if (result.failed) return result;
         }
-        foreach (arg; args)
+        foreach (element; inArray)
         {
-            arrayBuilderAddGeneric(builder, arg);
+            arrayBuilderAddGeneric(builder, element);
         }
-        return tryArrayBuilderFinishGeneric(builder, outArray);
+        return tryArrayBuilderFinishGeneric(builder, outClrArray);
     }
-    ArrayGeneric makeGenericArray(T...)(Type type, T args)
+    Array toClrArray(T)(Type type, T[] array)
     {
         import std.format : format;
 
-        ArrayGeneric array;
-        const result = tryMakeGenericArray(type, &array, args);
+        Array array;
+        const result = tryToClrArray(type, &array, array);
         if (result.failed)
             throw new Exception(format("makeArray failed: %s", result));
         return array;
     }
-    Array!(clr.PrimitiveType.Object) makeObjectArray(T...)(T args)
-    {
-        import std.format : format;
-
-        ArrayGeneric array;
-        const result = tryMakeGenericArray(primitiveTypes.Object, &array, args);
-        if (result.failed)
-            throw new Exception(format("makeArray failed: %s", result));
-        return structCast!(Array!(clr.PrimitiveType.Object))(array);
-    }
+    */
 
     //
     // Higher Level API
     //
-    ArrayGeneric getTypesArray(TypeSpec[] types)()
+    Array getTypesArray(TypeSpec[] types)()
     {
-        const builder = arrayBuilderNewGeneric(typeType, types.length);
-        scope (exit) release(builder);
+        auto array = newArray(typeType, types.length);
         ClosedTypeResult[types.length] genericTypes;
         static foreach (i, genericTypeSpec; types)
         {
             genericTypes[i] = getClosedType!genericTypeSpec;
-            arrayBuilderAddGeneric(builder, genericTypes[i].type);
+            arraySet(array, i, genericTypes[i].type);
             scope (exit) genericTypes[i].finalRelease(this);
         }
-        return arrayBuilderFinishGeneric(builder);
+        return array;
     }
     ClosedTypeResult getClosedType(TypeSpec typeSpec)()
     {
@@ -539,7 +596,7 @@ struct ClrBridge
         scope (exit) release(paramTypesArray);
         return getClosedMethod!methodSpec(type, paramTypesArray);
     }
-    MethodInfo getClosedMethod(MethodSpec methodSpec)(const Type type, const ArrayGeneric paramTypesArray)
+    MethodInfo getClosedMethod(MethodSpec methodSpec)(const Type type, const Array paramTypesArray)
     {
         static if (methodSpec.genericTypes.length > 0)
         {
@@ -552,6 +609,15 @@ struct ClrBridge
         else
             return resolveGenericMethod(unresolvedMethod, genericTypesArray);
     }
+}
+
+T intCast(T,U)(U value) pure nothrow @nogc
+{
+    import std.format : format;
+    T result = cast(T)value;
+    assert(cast(U)result == value, "value of type " ~ U.stringof ~ " cannot be cast to " ~ T.stringof);
+    //assert(cast(U)result == value, format("value '%s' of type %s cannot be cast to type %s", value, U.stringof, T.stringof));
+    return result;
 }
 
 /// Result of getClosedtype, abstracts whether or not it should be released
@@ -645,11 +711,4 @@ Reference a type from another .NET assembly
 template from(string name)
 {
     mixin("import from = " ~ name ~ ";");
-}
-
-// use pointer casts to workaround https://github.com/ldc-developers/ldc/issues/3314
-T structCast(T,U)(U s) if (T.sizeof == U.sizeof)
-{
-    pragma(inline, true);
-    return *cast(T*)&s;
 }

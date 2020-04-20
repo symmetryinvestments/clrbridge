@@ -34,7 +34,7 @@ void testBool(BoolMarshalType value, bool expected)
 
     const arg = globalClrBridge.funcs.BoxBoolean(value);
     scope (exit) globalClrBridge.release(arg);
-    const args = globalClrBridge.makeObjectArray(arg);
+    const args = globalClrBridge.argsToArrayOfObject(arg);
     scope (exit) globalClrBridge.release(args);
 
     BoolMarshalType returnValue = expected ? 0 : 0xFFFF;

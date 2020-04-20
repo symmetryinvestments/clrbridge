@@ -38,10 +38,12 @@ public static class GenerateClrBridgeCode
             Console.WriteLine("        MethodInfo method = (MethodInfo)GCHandle.FromIntPtr(methodPtr).Target;");
             Console.WriteLine("        method.Invoke(null, new Object[] {value});");
             Console.WriteLine("    }");
-            Console.WriteLine("    public static void ArrayBuilderAdd{0}(IntPtr arrayBuilderPtr, {0} value)", type);
+            if (type == "Object")
+                continue;
+            Console.WriteLine("    public static void ArraySet{0}(IntPtr arrayPtr, Int32 index, {0} value)", type);
             Console.WriteLine("    {");
-            Console.WriteLine("        ArrayBuilder<{0}> arrayBuilder = (ArrayBuilder<{0}>)GCHandle.FromIntPtr(arrayBuilderPtr).Target;", type);
-            Console.WriteLine("        arrayBuilder.Add(value);");
+            Console.WriteLine("        Array array = (Array)GCHandle.FromIntPtr(arrayPtr).Target;");
+            Console.WriteLine("        array.SetValue(value, index);");
             Console.WriteLine("    }");
         }
         Console.WriteLine("}");

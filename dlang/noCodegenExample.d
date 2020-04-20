@@ -35,40 +35,55 @@ int main()
     //globalClrBridge.funcs.TestArray([mscorlib.ptr, console.ptr, null].ptr);
     //globalClrBridge.funcs.TestVarargs(42);
 
+    /*
     {
-        const arr = globalClrBridge.arrayBuilderNewGeneric(globalClrBridge.primitiveTypes.Object, 10);
-        scope(exit) globalClrBridge.release(arr);
-
-        globalClrBridge.arrayBuilderAddGeneric(arr, globalClrBridge.primitiveTypes.Object);
-        //globalClrBridge.arrayAdd(arr, 100);
+        const array = globalClrBridge.argsToArrayOfInt32(1, 2, 3);
+        scope (exit) globalClrBridge.release(array);
+        globalClrBridge.debugWriteObject(array);
     }
+    */
 
+    {
+        const array = globalClrBridge.newArrayInt32(10);
+        scope(exit) globalClrBridge.release(array);
+        globalClrBridge.arraySetInt32(array, 0, 1);
+        globalClrBridge.arraySetInt32(array, 9, 1234);
+    }
+    {
+        const array = globalClrBridge.newArray(globalClrBridge.typeType, 1);
+        scope(exit) globalClrBridge.release(array);
+        globalClrBridge.arraySet(array, 0, globalClrBridge.primitiveTypes.UInt32);
+    }
+    {
+        const array = globalClrBridge.newArrayObject(10);
+        scope(exit) globalClrBridge.release(array);
+        globalClrBridge.arraySet(array, 0, globalClrBridge.primitiveTypes.Object);
+        //globalClrBridge.arrayAdd(array, 100);
+    }
     const stringBuilderType = globalClrBridge.getType(globalClrBridge.mscorlib, CStringLiteral!"System.Text.StringBuilder");
     {
         enum size = 10;
-        const arr = globalClrBridge.arrayBuilderNewGeneric(stringBuilderType, size);
+        const arr = globalClrBridge.newArray(stringBuilderType, size);
         scope(exit) globalClrBridge.release(arr);
 
         static foreach (i; 0 .. size)
         {{
-            const stringBuilderCtor = globalClrBridge.getConstructor(stringBuilderType, ArrayGeneric.nullObject);
-            const sb = globalClrBridge.callConstructor(stringBuilderCtor, Array!(clr.PrimitiveType.Object).nullObject);
+            const stringBuilderCtor = globalClrBridge.getConstructor(stringBuilderType, Array.nullObject);
+            const sb = globalClrBridge.callConstructor(stringBuilderCtor, ArrayPrimitive!(clr.PrimitiveType.Object).nullObject);
             scope(exit) globalClrBridge.release(sb);
-            globalClrBridge.arrayBuilderAddGeneric(arr, sb);
+            globalClrBridge.arraySet(arr, i, sb);
         }}
     }
 
     // test value type array
     {
         enum size = 10;
-        const arrayBuilder = globalClrBridge.arrayBuilderNewUInt32(size);
-        scope(exit) globalClrBridge.release(arrayBuilder);
+        const array = globalClrBridge.newArrayUInt32(size);
+        scope(exit) globalClrBridge.release(array);
         foreach (i; 0 .. size)
         {
-            globalClrBridge.arrayBuilderAddUInt32(arrayBuilder, i);
+            globalClrBridge.arraySetUInt32(array, i, i);
         }
-        const array = globalClrBridge.arrayBuilderFinishUInt32(arrayBuilder);
-        scope(exit) globalClrBridge.release(array);
         globalClrBridge.debugWriteObject(array);
     }
 
@@ -76,18 +91,16 @@ int main()
 
     // demonstrate how to create an array manually
     {
-        const builder = globalClrBridge.arrayBuilderNewGeneric(globalClrBridge.typeType, 1);
-        scope (exit) globalClrBridge.release(builder);
-        globalClrBridge.arrayBuilderAddGeneric(builder, globalClrBridge.primitiveTypes.String);
-        const manualStringTypeArray = globalClrBridge.arrayBuilderFinishGeneric(builder);
-        globalClrBridge.release(manualStringTypeArray);
+        const array = globalClrBridge.newArray(globalClrBridge.typeType, 1);
+        scope (exit) globalClrBridge.release(array);
+        globalClrBridge.arraySet(array, 0, globalClrBridge.primitiveTypes.String);
     }
-    const stringTypeArray = globalClrBridge.makeGenericArray(globalClrBridge.typeType, globalClrBridge.primitiveTypes.String);
+    const stringTypeArray = globalClrBridge.argsToArrayOf(globalClrBridge.typeType, globalClrBridge.primitiveTypes.String);
 
     // test ambiguous method error
     {
         MethodInfo methodInfo;
-        const result = globalClrBridge.tryGetMethod(consoleType, CStringLiteral!"WriteLine", ArrayGeneric.nullObject, &methodInfo);
+        const result = globalClrBridge.tryGetMethod(consoleType, CStringLiteral!"WriteLine", Array.nullObject, &methodInfo);
         assert(result.type == ClrBridgeError.Type.forward);
         assert(result.data.forward.code == ClrBridgeErrorCode.ambiguousMethod);
         writefln("got expected error: %s",  result);
@@ -99,7 +112,7 @@ int main()
     {
         const msg = globalClrBridge.box!"String"(CStringLiteral!"calling Console.WriteLine from D with Object Array!");
         scope(exit) globalClrBridge.release(msg);
-        const args = globalClrBridge.makeObjectArray(msg);
+        const args = globalClrBridge.argsToArrayOfObject(msg);
         scope(exit) globalClrBridge.release(args);
         globalClrBridge.funcs.CallGeneric(consoleWriteLine, clr.DotNetObject.nullObject, args, null);
     }
