@@ -1,3 +1,4 @@
 /out
+/out-pure
 *.gen.cs
 *~

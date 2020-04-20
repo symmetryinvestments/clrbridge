@@ -92,7 +92,7 @@ Support for this method has not been added yet.  This one is lower priority sinc
 
 # How to Build
 
-Note that all files created should go into the "out" directory.
+Note that all files created should go into the "out" directory or the "out-pure" directory.  "out-pure" will contain files that doesn't need to be cleaned/regenerated (i.e. versioned source trees from other projects).
 
 You can run a full clean build with:
 ```bash
