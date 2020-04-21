@@ -275,19 +275,29 @@ class ExtraReflection
     public String ToDMarshalType(String dQualifierContext, Type type)
     {
         if (type == typeof(Boolean)) return "ushort";
-        String importQualifier;
-        return ToDEquivalentType(dQualifierContext, type, out importQualifier);
+        LazyList<String> imports = LazyList<String>.Uninitialized;
+        return ToDEquivalentType(dQualifierContext, type, ref imports);
     }
 
     // TODO: add TypeContext?  like fieldDecl?  Might change const(char)* to string in some cases?
     // namespaceContext is the C# Namespace for which code is currently being generated
-    public String ToDEquivalentType(String dQualifierContext, Type type, out String importQualifier)
+    public String ToDEquivalentType(String dQualifierContext, Type type, ref LazyList<String> imports)
     {
+        if (type.IsArray)
+        {
+            if (type.GetArrayRank() != 1)
+            {
+                return type.UnsupportedTypeRef(); // no import necessary
+            }
+             // no import necessary
+            return String.Format("__d.clrbridge.Array!({0})",
+                ToDEquivalentType(dQualifierContext, type.GetElementType(), ref imports));
+        }
+
         // skip these types for now
         if (type.IsByRef || type.IsPointer)
         {
-            importQualifier = ""; // no import necessary
-            return type.UnsupportedTypeRef();
+            return type.UnsupportedTypeRef(); // no import necessary
         /*
             Type elementType = type.GetElementType();
             Debug.Assert(elementType != type);
@@ -297,25 +307,24 @@ class ExtraReflection
 
         if (type.IsGenericParameter)
         {
-            importQualifier = ""; // no import necessary
-            return type.Name.ToDIdentifier();
+            return type.Name.ToDIdentifier(); // no import necessary
         }
 
         Debug.Assert(type != typeof(void)); // not handled yet
-        if (type == typeof(Boolean)) { importQualifier = ""; return "bool"; }
-        if (type == typeof(Byte))    { importQualifier = ""; return "ubyte"; }
-        if (type == typeof(SByte))   { importQualifier = ""; return "byte"; }
-        if (type == typeof(UInt16))  { importQualifier = ""; return "ushort"; }
-        if (type == typeof(Int16))   { importQualifier = ""; return "short"; }
-        if (type == typeof(UInt32))  { importQualifier = ""; return "uint"; }
-        if (type == typeof(Int32))   { importQualifier = ""; return "int"; }
-        if (type == typeof(UInt64))  { importQualifier = ""; return "ulong"; }
-        if (type == typeof(Int64))   { importQualifier = ""; return "long"; }
-        if (type == typeof(Char))    { importQualifier = ""; return "char"; }
-        if (type == typeof(String))  { importQualifier = ""; return "__d.CString"; }
-        if (type == typeof(Single))  { importQualifier = ""; return "float"; }
-        if (type == typeof(Double))  { importQualifier = ""; return "double"; }
-        if (type == typeof(Decimal)) { importQualifier = ""; return "__d.clr.Decimal"; }
+        if (type == typeof(Boolean)) { return "bool"; }
+        if (type == typeof(Byte))    { return "ubyte"; }
+        if (type == typeof(SByte))   { return "byte"; }
+        if (type == typeof(UInt16))  { return "ushort"; }
+        if (type == typeof(Int16))   { return "short"; }
+        if (type == typeof(UInt32))  { return "uint"; }
+        if (type == typeof(Int32))   { return "int"; }
+        if (type == typeof(UInt64))  { return "ulong"; }
+        if (type == typeof(Int64))   { return "long"; }
+        if (type == typeof(Char))    { return "char"; }
+        if (type == typeof(String))  { return "__d.CString"; }
+        if (type == typeof(Single))  { return "float"; }
+        if (type == typeof(Double))  { return "double"; }
+        if (type == typeof(Decimal)) { return "__d.clr.Decimal"; }
         // TODO: figure out how to properly handle IntPtr
         //if (type == typeof(System.IntPtr)) { importQualifier = ""; return "void*"; }
         // TODO: using this causes D compiler to take too much memory while compiling mscorlib
@@ -326,7 +335,7 @@ class ExtraReflection
             //importQualifier = "mscorlib." + systemNamespace;
             //return "mscorlib." + systemNamespace + ".MscorlibObject";
         //}
-        if (type == typeof(Object))  { importQualifier = ""; return "__d.clr.DotNetObject"; }
+        if (type == typeof(Object))  { return "__d.clr.DotNetObject"; }
 
         // TODO: do this for all types, not just enums
         // we need to include the qualifier even on types in the same module so their names don't conflict
@@ -348,21 +357,22 @@ class ExtraReflection
         if (useRealType)
         {
             ExtraTypeInfo typeInfo = GetExtraTypeInfo(type);
+            String import;
             if (type.Assembly == thisAssembly && dQualifierContext == typeInfo.moduleName)
             {
-                importQualifier = "";
+                import = "";
             }
             else
             {
                 // from import idiom does not work with circular references :(
                 //importQualifier = String.Format("__d.clrbridge.from!\"{0}\"", typeInfo.moduleName);
-                importQualifier = typeInfo.moduleName;
+                import = typeInfo.moduleName;
+                LazyList<String>.Add(ref imports, import);
             }
-            return String.Format("{0}.{1}", importQualifier, typeInfo.moduleRelativeName);
+            return String.Format("{0}.{1}", import, typeInfo.moduleRelativeName);
         }
 
         // references to this type are temporarily disabled, so for now we just treat it as a generic Object
-        importQualifier = "";
         return type.UnsupportedTypeRef();
     }
 }
@@ -560,12 +570,15 @@ class Generator : ExtraReflection
         HashSet<String> imports = new HashSet<String>();
         foreach (ModuleTypeRef typeRef in typeRefs)
         {
-            if (!typeRef.importQualifier.IsEmpty() && imports.Add(typeRef.importQualifier))
+            foreach (String import in typeRef.imports)
             {
-                // static imports are not lazy and make it take WAAAAY to long to compile
-                // not sure how to solve this one
-                // the from import idiom does not seem to work with circular references
-                context.WriteLine("static import {0};", typeRef.importQualifier);
+                if (imports.Add(import))
+                {
+                    // static imports are not lazy and make it take WAAAAY to long to compile
+                    // not sure how to solve this one
+                    // the from import idiom does not seem to work with circular references
+                    context.WriteLine("static import {0};", import);
+                }
             }
         }
     }
@@ -1185,11 +1198,11 @@ class TabStringPool
 // Data for a type reference for a particular module
 struct ModuleTypeRef
 {
-    public readonly String importQualifier;
+    public readonly LazyList<String> imports;
     public readonly String dTypeString;
-    public ModuleTypeRef(String importQualifier, String dTypeString)
+    public ModuleTypeRef(LazyList<String> imports, String dTypeString)
     {
-        this.importQualifier = importQualifier;
+        this.imports = imports;
         this.dTypeString = dTypeString;
     }
 }
@@ -1224,9 +1237,9 @@ abstract class DContext : IDisposable
         ModuleTypeRef typeRef;
         if (!typeRefMap.TryGetValue(type, out typeRef))
         {
-            String importQualifier;
-            String dTypeString = extraReflection.ToDEquivalentType(dQualifierContext, type, out importQualifier);
-            typeRef = new ModuleTypeRef(importQualifier, dTypeString);
+            LazyList<String> imports = LazyList<String>.Uninitialized;
+            String dTypeString = extraReflection.ToDEquivalentType(dQualifierContext, type, ref imports);
+            typeRef = new ModuleTypeRef(imports, dTypeString);
             typeRefMap[type] = typeRef;
         }
         return typeRef.dTypeString;
@@ -1473,6 +1486,24 @@ static class Util
     {
         return String.Format("__d.clrbridge.UnsupportedType!q{{{0}}}", type.ToString().Replace("`", "_"));
     }
+}
+
+// Allows you to save on objects by not creating one until an item is added
+public class LazyList<T> : List<T>
+{
+    public static readonly LazyList<T> Uninitialized = new LazyList<T>();
+    public LazyList() : base() { }
+    public static void Add(ref LazyList<T> list, T item)
+    {
+        if (list == Uninitialized)
+            list = new LazyList<T>();
+        list.PrivateBaseAdd(item);
+    }
+    private new void Add(T item)
+    {
+        throw new InvalidOperationException("Do not call Add directly on LazyList");
+    }
+    private void PrivateBaseAdd(T item) { base.Add(item); }
 }
 
 static class Extensions
