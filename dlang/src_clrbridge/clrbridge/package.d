@@ -128,6 +128,12 @@ struct ClrBridgeError
         return error;
     }
     bool failed() const nothrow @nogc { return type != Type.none; }
+    void enforce(Args...)(string fmt, Args args)
+    {
+        import std.format : format;
+        if (failed)
+            throw new Exception(format(fmt ~ ": %s", args, this));
+    }
     void toString(scope void delegate(const(char)[]) sink) const
     {
         import std.format : formattedWrite;
@@ -271,12 +277,8 @@ struct ClrBridge
     }
     DotNetObject box(string typeName)(const clr.DlangType!typeName value)
     {
-        import std.format : format;
-
         DotNetObject obj;
-        const result = tryBox!typeName(value, &obj);
-        if (result.failed)
-            throw new Exception(format("failed to box a value: %s", result));
+        tryBox!typeName(value, &obj).enforce("failed to box a value"); // todo: print type name
         return obj;
     }
 
@@ -289,12 +291,8 @@ struct ClrBridge
     }
     Assembly loadAssembly(CString name)
     {
-        import std.format : format;
-
         Assembly assembly;
-        const result = tryLoadAssembly(name, &assembly);
-        if (result.failed)
-            throw new Exception(format("failed to load assembly '%s': %s", name, result));
+        tryLoadAssembly(name, &assembly).enforce("failed to load assembly '%s'", name);
         return assembly;
     }
 
@@ -307,12 +305,8 @@ struct ClrBridge
     }
     Type getType(const Assembly assembly, CString name)
     {
-        import std.format : format;
-
         Type type;
-        const result = tryGetType(assembly, name, &type);
-        if (result.failed)
-            throw new Exception(format("failed to get type '%s': %s", name, result));
+        tryGetType(assembly, name, &type).enforce("failed to get type '%s'", name);
         return type;
     }
 
@@ -325,11 +319,8 @@ struct ClrBridge
     }
     Type resolveGenericType(const Type type, const Array!Type types)
     {
-        import std.format : format;
         Type closedType;
-        const result = tryResolveGenericType(type, types, &closedType);
-        if (result.failed)
-            throw new Exception(format("failed to resolve generic type: %s", result));
+        tryResolveGenericType(type, types, &closedType).enforce("failed to resolve generic type");
         return closedType;
     }
 
@@ -342,12 +333,8 @@ struct ClrBridge
     }
     ConstructorInfo getConstructor(const Type type, const Array!Type paramTypes)
     {
-        import std.format : format;
-
         ConstructorInfo constructor;
-        const result = tryGetConstructor(type, paramTypes, &constructor);
-        if (result.failed)
-            throw new Exception(format("failed to get constructor: %s", result));
+        tryGetConstructor(type, paramTypes, &constructor).enforce("failed to get constructor");
         return constructor;
     }
 
@@ -360,12 +347,8 @@ struct ClrBridge
     }
     MethodInfo getMethod(const Type type, CString name, const Array!Type paramTypes)
     {
-        import std.format : format;
-
         MethodInfo method;
-        const result = tryGetMethod(type, name, paramTypes, &method);
-        if (result.failed)
-            throw new Exception(format("failed to get method '%s': %s", name, result));
+        tryGetMethod(type, name, paramTypes, &method).enforce("failed to get method '%s'", name);
         return method;
     }
 
@@ -378,11 +361,8 @@ struct ClrBridge
     }
     DotNetObject callConstructor(const ConstructorInfo constructor, const Array!(clr.DotNetObject) args)
     {
-        import std.format : format;
         DotNetObject obj;
-        const result = tryCallConstructor(constructor, args, &obj);
-        if (result.failed)
-            throw new Exception(format("failed to call constructor: %s", result));
+        tryCallConstructor(constructor, args, &obj).enforce("failed to call constructor:");
         return obj;
     }
 
@@ -401,12 +381,8 @@ struct ClrBridge
 
     ArrayObject newArrayCommon(const Type type, uint length)
     {
-        import std.format : format;
-
         ArrayObject array;
-        const result = tryNewArrayCommon(type, length, &array);
-        if (result.failed)
-            throw new Exception(format("failed to create array: %s", result));
+        tryNewArrayCommon(type, length, &array).enforce("failed to create array");
         return array;
     }
     Array!T newArray(T)(uint length)
@@ -414,22 +390,14 @@ struct ClrBridge
         const typeResult = getClosedType!(T.__clrmetadata.typeSpec);
         scope (exit) typeResult.finalRelease(this);
 
-        import std.format : format;
-
         Array!T array;
-        const result = tryNewArrayCommon(typeResult.type, length, cast(ArrayObject*)&array);
-        if (result.failed)
-            throw new Exception(format("failed to create array: %s", result));
+        tryNewArrayCommon(typeResult.type, length, cast(ArrayObject*)&array).enforce("failed to create array");
         return array;
     }
     ArrayPrimitive!T newArrayPrimitive(clr.PrimitiveType T)(uint length)
     {
-        import std.format : format;
-
         ArrayPrimitive!T array;
-        const result = tryNewArrayPrimitive!T(length, &array);
-        if (result.failed)
-            throw new Exception(format("failed to create array: %s", result));
+        tryNewArrayPrimitive!T(length, &array).enforce("failed to create array");
         return array;
     }
     mixin DotnetPrimitiveWrappers!("newArray", Yes.skipObject);
@@ -490,12 +458,8 @@ struct ClrBridge
 
     ArrayObject argsToArrayCommon(Args...)(const Type type, Args args)
     {
-        import std.format : format;
-
         ArrayObject array;
-        const result = tryArgsToArrayCommon(type, &array, args);
-        if (result.failed)
-            throw new Exception(format("tryArgsToArrayCommon failed: %s", result));
+        tryArgsToArrayCommon(type, &array, args).enforce("tryArgsToArrayCommon failed");
         return array;
     }
     Array!T argsToArray(T, Args...)(Args args)
@@ -503,12 +467,8 @@ struct ClrBridge
         const typeResult = getClosedType!(T.__clrmetadata.typeSpec);
         scope (exit) typeResult.finalRelease(this);
 
-        import std.format : format;
-
         Array!T array;
-        const result = tryArgsToArrayCommon(typeResult.type, cast(ArrayObject*)&array, args);
-        if (result.failed)
-            throw new Exception(format("tryArgsToArrayCommon failed: %s", result));
+        tryArgsToArrayCommon(typeResult.type, cast(ArrayObject*)&array, args).enforce("tryArgsToArrayCommon failed");
         return array;
     }
     /+
@@ -516,23 +476,15 @@ struct ClrBridge
     // to a Clr method with Object.
     ArrayPrimitive!(clr.PrimitiveType.Object) argsToArrayOfObject(T...)(T args)
     {
-        import std.format : format;
-
         ArrayPrimitive!(clr.PrimitiveType.Object) array;
-        const result = tryArgsToArrayOfObject(&array, args);
-        if (result.failed)
-            throw new Exception(format("tryArgsToArrayOfObject failed: %s", result));
+        tryArgsToArrayOfObject(&array, args).enforce("tryArgsToArrayOfObject failed");
         return array;
     }
     +/
     ArrayPrimitive!T argsToArrayOfPrimitive(clr.PrimitiveType T, U...)(/*clr.DlangType!T[]*/U args)
     {
-        import std.format : format;
-
         ArrayPrimitive!T array;
-        const result = tryArgsToArrayOfPrimitive!(T,U)(&array, args);
-        if (result.failed)
-            throw new Exception(format("tryArgsToArrayOfPrimitive failed: %s", result));
+        tryArgsToArrayOfPrimitive!(T,U)(&array, args).enforce("tryArgsToArrayOfPrimitive failed");
         return array;
     }
     mixin DotnetPrimitiveVarargWrappers!("argsToArrayOf", Yes.skipObject);
@@ -558,12 +510,8 @@ struct ClrBridge
     }
     Array toClrArray(T)(Type type, T[] array)
     {
-        import std.format : format;
-
         Array array;
-        const result = tryToClrArray(type, &array, array);
-        if (result.failed)
-            throw new Exception(format("makeArray failed: %s", result));
+        tryToClrArray(type, &array, array).enforce("makeArray failed");
         return array;
     }
     */
