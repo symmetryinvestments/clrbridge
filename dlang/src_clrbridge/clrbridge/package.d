@@ -65,10 +65,6 @@ struct MethodInfo   { mixin DotNetObjectMixin!DotNetObject; }
 // The Array Base Type that all Array types inherit from
 struct ArrayObject { mixin DotNetObjectMixin!DotNetObject; }
 struct Array(T) { mixin DotNetObjectMixin!ArrayObject; }
-// Rather than using Array, ArrayPrimitive can be used to help detect Array type mismatches at
-// compile-time if the element type is a primitive type.
-struct ArrayPrimitive(clr.PrimitiveType T) if (T != clr.PrimitiveType.Object)
-{ mixin DotNetObjectMixin!(Array!(clr.DlangType!T)); }
 
 struct ArrayBuilder(clr.PrimitiveType T) { mixin DotNetObjectMixin!DotNetObject; }
 struct ArrayBuilderGeneric { mixin DotNetObjectMixin!DotNetObject; }
@@ -204,7 +200,7 @@ struct ClrBridge
             mixin("void function(const MethodInfo method, " ~ type.marshalType ~ ") nothrow @nogc CallStatic" ~ type.name ~ ";");
             static if (type.type != clr.PrimitiveType.Object)
             {
-                mixin("void function(const ArrayPrimitive!(clr.PrimitiveType." ~ type.name ~ ") array, int index," ~
+                mixin("void function(const Array!(" ~ type.dlangEquivalent ~ ") array, int index," ~
                     "const " ~ type.marshalType ~ " value) nothrow @nogc ArraySet" ~ type.name ~ ";");
             }
         }
@@ -373,7 +369,7 @@ struct ClrBridge
             return ClrBridgeError.forward(errorCode);
         return ClrBridgeError.none;
     }
-    ClrBridgeError tryNewArrayPrimitive(clr.PrimitiveType T)(uint length, ArrayPrimitive!T* outArray) nothrow @nogc
+    ClrBridgeError tryNewArrayPrimitive(clr.PrimitiveType T)(uint length, Array!(clr.DlangType!T)* outArray) nothrow @nogc
     {
         return tryNewArrayCommon(primitiveTypes.array[T], length, cast(ArrayObject*)outArray);
     }
@@ -394,9 +390,9 @@ struct ClrBridge
         tryNewArrayCommon(typeResult.type, length, cast(ArrayObject*)&array).enforce("failed to create array");
         return array;
     }
-    ArrayPrimitive!T newArrayPrimitive(clr.PrimitiveType T)(uint length)
+    Array!(clr.DlangType!T) newArrayPrimitive(clr.PrimitiveType T)(uint length)
     {
-        ArrayPrimitive!T array;
+        Array!(clr.DlangType!T) array;
         tryNewArrayPrimitive!T(length, &array).enforce("failed to create array");
         return array;
     }
@@ -410,10 +406,9 @@ struct ClrBridge
     {
         assert(0 == funcs.ArraySet(array, index, obj));
     }
-    void arraySetPrimitive(clr.PrimitiveType T)(const ArrayPrimitive!T array, int index, const clr.DlangType!T value) nothrow @nogc
+    void arraySetPrimitive(clr.PrimitiveType T)(const Array!(clr.DlangType!T) array, int index, const clr.DlangType!T value) nothrow @nogc
     {
-        enum primitiveTypeInfo = clr.Info!T;
-        mixin(`funcs.ArraySet` ~ primitiveTypeInfo.name ~ `(array, index, value);`);
+        mixin(`funcs.ArraySet` ~ clr.primitiveTypes[T].name ~ `(array, index, value);`);
     }
     mixin DotnetPrimitiveWrappers!("arraySet", Yes.skipObject);
 
@@ -433,28 +428,27 @@ struct ClrBridge
         *outArray = array;
         return ClrBridgeError.none;
     }
-    /+
-    // This is a special case of primitive type because we can't pass non-object arguments
-    // to a Clr method with Object.
-    ClrBridgeError tryArgsToArrayOfObject(T...)(ArrayPrimitive!(clr.PrimitiveType.Object)* outArray, T args) nothrow @nogc
-    {
-        return tryArgsToArrayOf!T(primitiveTypes.Object, cast(Array*)outArray, args);
-    }
-    +/
-    ClrBridgeError tryArgsToArrayOfPrimitive(clr.PrimitiveType T, U...)(ArrayPrimitive!T* outArray, /*clr.DlangType!T[]*/U args) nothrow @nogc
-    {
-        ArrayPrimitive!T array;
-        {
-            const result = tryNewArrayPrimitive!T(args.length.intCast!uint, &array);
-            if (result.failed) return result;
-        }
-        foreach (i, arg; args)
-        {
-            arraySetPrimitive!T(array, i.intCast!int, arg);
-        }
-        *outArray = array;
-        return ClrBridgeError.none;
-    }
+
+    //// This is a special case of primitive type because we can't pass non-object arguments
+    //// to a Clr method with Object.
+    //ClrBridgeError tryArgsToArrayOfObject(T...)(ArrayPrimitive!(clr.PrimitiveType.Object)* outArray, T args) nothrow @nogc
+    //{
+    //    return tryArgsToArrayOf!T(primitiveTypes.Object, cast(Array*)outArray, args);
+    //}
+    //ClrBridgeError tryArgsToArrayOfPrimitive(clr.PrimitiveType T, U...)(ArrayPrimitive!T* outArray, /*clr.DlangType!T[]*/U args) nothrow @nogc
+    //{
+    //    ArrayPrimitive!T array;
+    //    {
+    //        const result = tryNewArrayPrimitive!T(args.length.intCast!uint, &array);
+    //        if (result.failed) return result;
+    //    }
+    //    foreach (i, arg; args)
+    //    {
+    //        arraySetPrimitive!T(array, i.intCast!int, arg);
+    //    }
+    //    *outArray = array;
+    //    return ClrBridgeError.none;
+    //}
 
     ArrayObject argsToArrayCommon(Args...)(const Type type, Args args)
     {
@@ -471,24 +465,22 @@ struct ClrBridge
         tryArgsToArrayCommon(typeResult.type, cast(ArrayObject*)&array, args).enforce("tryArgsToArrayCommon failed");
         return array;
     }
-    /+
-    // This is a special case of primitive type because we can't pass non-object arguments
-    // to a Clr method with Object.
-    ArrayPrimitive!(clr.PrimitiveType.Object) argsToArrayOfObject(T...)(T args)
-    {
-        ArrayPrimitive!(clr.PrimitiveType.Object) array;
-        tryArgsToArrayOfObject(&array, args).enforce("tryArgsToArrayOfObject failed");
-        return array;
-    }
-    +/
-    ArrayPrimitive!T argsToArrayOfPrimitive(clr.PrimitiveType T, U...)(/*clr.DlangType!T[]*/U args)
-    {
-        ArrayPrimitive!T array;
-        tryArgsToArrayOfPrimitive!(T,U)(&array, args).enforce("tryArgsToArrayOfPrimitive failed");
-        return array;
-    }
-    mixin DotnetPrimitiveVarargWrappers!("argsToArrayOf", Yes.skipObject);
 
+    //// This is a special case of primitive type because we can't pass non-object arguments
+    //// to a Clr method with Object.
+    //ArrayPrimitive!(clr.PrimitiveType.Object) argsToArrayOfObject(T...)(T args)
+    //{
+    //    ArrayPrimitive!(clr.PrimitiveType.Object) array;
+    //    tryArgsToArrayOfObject(&array, args).enforce("tryArgsToArrayOfObject failed");
+    //    return array;
+    //}
+    //ArrayPrimitive!T argsToArrayOfPrimitive(clr.PrimitiveType T, U...)(/*clr.DlangType!T[]*/U args)
+    //{
+    //    ArrayPrimitive!T array;
+    //    tryArgsToArrayOfPrimitive!(T,U)(&array, args).enforce("tryArgsToArrayOfPrimitive failed");
+    //    return array;
+    //}
+    //mixin DotnetPrimitiveVarargWrappers!("argsToArrayOf", Yes.skipObject);
 
     /*
     // convert a native array to a clr array
