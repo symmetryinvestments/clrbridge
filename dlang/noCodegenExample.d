@@ -13,11 +13,11 @@ import std.stdio;
 import cstring;
 import coreclr;
 import coreclr.host;
+static import clr;
+import clr : DotNetObject;
 import clrbridge;
 import clrbridge.global;
 import clrbridge.coreclr;
-
-static import clr;
 
 int main()
 {
@@ -50,12 +50,17 @@ int main()
         globalClrBridge.arraySetInt32(array, 9, 1234);
     }
     {
-        const array = globalClrBridge.newArray(globalClrBridge.typeType, 1);
+        const array = globalClrBridge.newArrayCommon(globalClrBridge.typeType, 1);
+        scope(exit) globalClrBridge.release(array);
+        globalClrBridge.arraySetCommon(array, 0, globalClrBridge.primitiveTypes.UInt32);
+    }
+    {
+        const array = globalClrBridge.newArray!Type(1);
         scope(exit) globalClrBridge.release(array);
         globalClrBridge.arraySet(array, 0, globalClrBridge.primitiveTypes.UInt32);
     }
     {
-        const array = globalClrBridge.newArrayObject(10);
+        const array = globalClrBridge.newArray!DotNetObject(10);
         scope(exit) globalClrBridge.release(array);
         globalClrBridge.arraySet(array, 0, globalClrBridge.primitiveTypes.Object);
         //globalClrBridge.arrayAdd(array, 100);
@@ -63,15 +68,15 @@ int main()
     const stringBuilderType = globalClrBridge.getType(globalClrBridge.mscorlib, CStringLiteral!"System.Text.StringBuilder");
     {
         enum size = 10;
-        const arr = globalClrBridge.newArray(stringBuilderType, size);
+        const arr = globalClrBridge.newArrayCommon(stringBuilderType, size);
         scope(exit) globalClrBridge.release(arr);
 
         static foreach (i; 0 .. size)
         {{
-            const stringBuilderCtor = globalClrBridge.getConstructor(stringBuilderType, Array.nullObject);
-            const sb = globalClrBridge.callConstructor(stringBuilderCtor, ArrayPrimitive!(clr.PrimitiveType.Object).nullObject);
+            const stringBuilderCtor = globalClrBridge.getConstructor(stringBuilderType, Array!Type.nullObject);
+            const sb = globalClrBridge.callConstructor(stringBuilderCtor, Array!DotNetObject.nullObject);
             scope(exit) globalClrBridge.release(sb);
-            globalClrBridge.arraySet(arr, i, sb);
+            globalClrBridge.arraySetCommon(arr, i, sb);
         }}
     }
 
@@ -90,17 +95,12 @@ int main()
     const consoleType = globalClrBridge.getType(globalClrBridge.mscorlib, CStringLiteral!"System.Console");
 
     // demonstrate how to create an array manually
-    {
-        const array = globalClrBridge.newArray(globalClrBridge.typeType, 1);
-        scope (exit) globalClrBridge.release(array);
-        globalClrBridge.arraySet(array, 0, globalClrBridge.primitiveTypes.String);
-    }
-    const stringTypeArray = globalClrBridge.argsToArrayOf(globalClrBridge.typeType, globalClrBridge.primitiveTypes.String);
+    const stringTypeArray = globalClrBridge.argsToArray!Type(globalClrBridge.primitiveTypes.String);
 
     // test ambiguous method error
     {
         MethodInfo methodInfo;
-        const result = globalClrBridge.tryGetMethod(consoleType, CStringLiteral!"WriteLine", Array.nullObject, &methodInfo);
+        const result = globalClrBridge.tryGetMethod(consoleType, CStringLiteral!"WriteLine", Array!Type.nullObject, &methodInfo);
         assert(result.type == ClrBridgeError.Type.forward);
         assert(result.data.forward.code == ClrBridgeErrorCode.ambiguousMethod);
         writefln("got expected error: %s",  result);
@@ -112,9 +112,9 @@ int main()
     {
         const msg = globalClrBridge.box!"String"(CStringLiteral!"calling Console.WriteLine from D with Object Array!");
         scope(exit) globalClrBridge.release(msg);
-        const args = globalClrBridge.argsToArrayOfObject(msg);
+        const args = globalClrBridge.argsToArray!DotNetObject(msg);
         scope(exit) globalClrBridge.release(args);
-        globalClrBridge.funcs.CallGeneric(consoleWriteLine, clr.DotNetObject.nullObject, args, null);
+        globalClrBridge.funcs.CallGeneric(consoleWriteLine, DotNetObject.nullObject, args, null);
     }
     {
         const consoleType3 = globalClrBridge.getClosedType!(clr.TypeSpec("mscorlib", "System.Console"));

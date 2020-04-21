@@ -526,7 +526,7 @@ class Generator : ExtraReflection
                 writer.WriteLine("    static import clr;");
                 writer.WriteLine("    static import clrbridge;");
                 writer.WriteLine("    import clrbridge.global : globalClrBridge;");
-                writer.WriteLine("    alias ObjectArray = clrbridge.ArrayPrimitive!(clr.PrimitiveType.Object);");
+                writer.WriteLine("    alias ObjectArray = clrbridge.Array!(clr.DotNetObject);");
                 writer.WriteLine("}");
                 moduleMap.Add(typeInfo.moduleName, module);
             }
@@ -1058,7 +1058,7 @@ class Generator : ExtraReflection
         }
         else
         {
-            context.WriteLine("__d.ObjectArray __param_values__ = __d.globalClrBridge.argsToArrayOfObject(");
+            context.WriteLine("__d.ObjectArray __param_values__ = __d.globalClrBridge.argsToArray!(__d.clr.DotNetObject)(");
             {
                 uint paramIndex = 0;
                 string prefix = " ";
