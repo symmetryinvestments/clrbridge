@@ -383,7 +383,7 @@ struct ClrBridge
     }
     Array!T newArray(T)(uint length)
     {
-        const typeResult = getClosedType!(T.__clrmetadata.typeSpec);
+        const typeResult = getClosedType!(GetTypeSpec!T);
         scope (exit) typeResult.finalRelease(this);
 
         Array!T array;
@@ -458,7 +458,7 @@ struct ClrBridge
     }
     Array!T argsToArray(T, Args...)(Args args)
     {
-        const typeResult = getClosedType!(T.__clrmetadata.typeSpec);
+        const typeResult = getClosedType!(GetTypeSpec!T);
         scope (exit) typeResult.finalRelease(this);
 
         Array!T array;
