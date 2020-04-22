@@ -347,7 +347,6 @@ class ExtraReflection
         }
         else if (
                !type.IsGenericType // skip generic types for now
-            && !type.IsArray // skip arrays for now
             && !(typeof(Delegate).IsAssignableFrom(type)) // skip delegates for now
             && !type.IsValueType // skip value types for now
         )
@@ -1036,8 +1035,7 @@ class Generator : ExtraReflection
             uint paramIndex = 0;
             foreach (ParameterInfo parameter in parameters)
             {
-                if (parameter.ParameterType.IsArray ||
-                    parameter.ParameterType.IsByRef ||
+                if (parameter.ParameterType.IsByRef ||
                     parameter.ParameterType.IsPointer)
                 {
                     // skip complicated types for now
@@ -1051,6 +1049,10 @@ class Generator : ExtraReflection
                     context.WriteLine("    scope (exit) __enum_type__.finalRelease(__d.globalClrBridge);");
                     context.WriteLine("    __param{0}__ = __d.globalClrBridge.boxEnum(__enum_type__.type, {1});", paramIndex, parameter.Name.ToDIdentifier());
                     context.WriteLine("}");
+                }
+                else if (parameter.ParameterType.IsArray)
+                {
+                    // no conversion needed
                 }
                 else
                 {
@@ -1077,12 +1079,12 @@ class Generator : ExtraReflection
                 string prefix = " ";
                 foreach (ParameterInfo parameter in parameters)
                 {
-                    if (parameter.ParameterType.IsArray ||
-                        parameter.ParameterType.IsByRef ||
+                    if (parameter.ParameterType.IsByRef ||
                         parameter.ParameterType.IsPointer)
-                        context.WriteLine("    {0}__d.clr.DotNetObject.nullObject", prefix);
+                        context.WriteLine("    {0}__d.clr.DotNetObject.nullObject", prefix); // temporarily disabled
                     else if (parameter.ParameterType.IsEnum || TryGetBoxType(parameter.ParameterType) != null)
                         context.WriteLine("    {0}__param{1}__", prefix, paramIndex);
+                    // else if (parameter.ParameterType.IsArray) (goto else)
                     else
                         context.WriteLine("    {0}{1}", prefix, parameter.Name.ToDIdentifier());
                     prefix = ",";

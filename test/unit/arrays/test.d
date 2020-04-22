@@ -3,7 +3,7 @@ import clr : PrimitiveType, Decimal, TypeSpec, DotNetObject;
 import clrbridge : MethodSpec;
 import clrbridge.global : globalClrBridge;
 import arrays;
-//import std.stdio;
+import std.stdio;
 
 void test()
 {
@@ -21,7 +21,10 @@ void test()
             globalClrBridge.primitiveTypes.UInt32,
             globalClrBridge.primitiveTypes.UInt32,
             globalClrBridge.primitiveTypes.Boolean);
-        // not working yet
-        //auto obj2 = Static.PassthroughObjectArray(objs);
+        writefln("objs.handle=%s", objs.handle);
+        globalClrBridge.debugWriteObject(objs);
+        auto obj2 = Static.PassthroughObjectArray(objs);
+        writefln("obj2.handle=%s", obj2.handle);
+        globalClrBridge.debugWriteObject(obj2);
     }
 }
